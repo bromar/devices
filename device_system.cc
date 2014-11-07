@@ -20,6 +20,13 @@
 
 using namespace std;
 
+/*
+	stream flags in octal - base eight
+*/
+#define ODD_RDONLY 	00
+#define ODD_WRONLY 	01
+#define ODD_RDWR 	02
+
 #define EXCLUSION Sentry exclusion(this); exclusion.touch();
 
 class DeviceDriver;
@@ -34,7 +41,7 @@ public:
   // ...
 };
 
-class Inode: Monitor {
+class Inode : Monitor {
 public: 
 	int linkCount = 0;
 	int openCount = 0;
@@ -48,9 +55,10 @@ public:
 	}
 
 	int unlink() {
-		assert( linkCount > 0);
+		assert(linkCount > 0);
 		--linkCount;
-		cleanup();	
+		cleanup();
+		return 0;
 	}
 	
 	void cleanup() {
@@ -69,7 +77,7 @@ class DeviceDriver: public Monitor {
 	public:
 		Condition ok2read;
 		Condition ok2write;
-		Inode* inode;
+		Inode *inode;
 		bool readable;
 		bool writeable;
 		int deviceNumber;
@@ -81,18 +89,37 @@ class DeviceDriver: public Monitor {
 		driverName( driverName )
 		{
 			drivers.push_back(this);
-			++inode->openCount;
+			//inode->openCount++;
 		}
 
 	~DeviceDriver() {
-		--inode->openCount;
-	}
+		//inode->openCount--;
 
+		// we must remove device driver from vector
+		// this removal run in O(n^2), look into remove_if
+		auto i = begin(drivers);
+		while (i != end(drivers)) {
+		    if ((*i)->deviceNumber == deviceNumber) {
+		        i = drivers.erase(i);
+		    }
+		    else {
+		        i++;
+		    }
+		}
+	}
+	
+	/*virtual int open() {}
 	virtual int read() {}
 	virtual int write() {}
 	virtual int seek() {}
 	virtual int rewind() {}
-	virtual int ioctl() {}
+	virtual int ioctl() {}*/
+	virtual void open() {}
+	virtual void read() {}
+	virtual void write() {}
+	virtual void seek() {}
+	virtual void rewind() {}
+	virtual void ioctl() {}
 	virtual void online() {}
 	virtual void offline() {}
 	virtual void fireup() {}
@@ -101,54 +128,119 @@ class DeviceDriver: public Monitor {
 };
 
 
-
-class iostreamDevice : DeviceDriver {
+class istreamDevice : DeviceDriver {
 
 	public: 
 		int inodeCount = 0;
 		int openCount = 0;
 		
-		iostream* bytes;
+		istream *bytes;
 
-		iostreamDevice( iostream* io )
-			: bytes(io), DeviceDriver("iostreamDevice")
+		istreamDevice( istream *io )
+			: bytes(io), DeviceDriver("istreamDevice")
 		{
-			readable = true;
-			writeable = true;
+			cout << "*Inside istreamDevice()\n";
+			readable = false;
+			writeable = false;
+			cout << "readable: " << readable << endl;
+			cout << "writeable: " << writeable << endl;
 		}
 
-		~iostreamDevice() {
+		~istreamDevice() {
+			//
 		}
 
-		int open( const char* pathname, int flags) {
-			
+		int open(const char* pathname, int flags) {
+			readable = !(flags & 0x01);
+			writeable = (flags & 0x01) | (flags & 0x02);
+			cout << "readable: " << readable << endl;
+			cout << "writeable: " << writeable << endl;
+			driverName = pathname;
+			cout << "driverName: " << driverName << endl;
+			openCount++;
+			return deviceNumber; // return fd to device driver
 		}
 
-		int close( int fd) {
-
+		int close(int fd) {
+			//openCount--;
+			//~istreamDevice();
+			return 0;
 		}
 
-		int read( int fd, void* buf, size_t count) {
-
+		int read(int fd, void* buf, size_t count) {
+			return -1;
 		}
 
-		int write( int fd, void* buf, size_t count) {
-
+		int seek(int fd, off_t offset, int whence) {
+			return -1;
 		}
 
-		int seek( int fd, off_t offset, int whence) {
-
-		}
-
-		int rewind( int pos ) {
-
+		int rewind(int pos ) {
+			return -1;
 		}
 
 		/*
 		int ioctl(  ) {
 
 		}
-		//*/
+		*/
 };
 
-int main() {}
+class ostreamDevice : DeviceDriver {
+
+	public: 
+		int inodeCount = 0;
+		int openCount = 0;
+		
+		ostream* bytes;
+
+		ostreamDevice( ostream* io )
+			: bytes(io), DeviceDriver("ostreamDevice")
+		{
+			readable = true;
+			writeable = true;
+		}
+
+		~ostreamDevice() {
+		}
+
+		int open(const char* pathname, int flags) {
+			return -1;
+		}
+
+		int close(int fd) {
+			return -1;
+		}
+
+		int write(int fd, void* buf, size_t count) {
+			return -1;
+		}
+
+		/*
+		int ioctl(  ) {
+
+		}
+		*/
+};
+
+int main(int argc, char **argv)
+{
+	cout << "Hello world!\n\n";
+
+	istreamDevice is1 = istreamDevice(&cin);
+	cout << "Read yes --\n";
+	int dn1 = is1.open("~/Desktop/tes1.txt",ODD_RDONLY);
+	cout << "deviceNumber: " << dn1 << endl << endl;
+
+	istreamDevice is2 = istreamDevice(&cin);
+	cout << "Write yes --\n";
+	int dn2 = is2.open("~/Desktop/test2.txt",ODD_WRONLY);
+	cout << "deviceNumber: " << dn2 << endl << endl;
+	
+	istreamDevice is3 = istreamDevice(&cin);
+	cout << "Read+Write yes --\n";
+	int dn3 = is3.open("~/Desktop/test3.txt",ODD_RDWR);
+	cout << "deviceNumber: " << dn3 << endl << endl;
+
+	cout << "\nBye cruel world!\n";
+}
