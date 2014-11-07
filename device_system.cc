@@ -4,19 +4,12 @@
 #include <list>
 #include <cassert>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <sstream>
 #include <errno.h>
-
-#include <pthread.h>
-#include <semaphore.h>
-#include <map>
-#include <queue>
-#include <iomanip>
-#include <signal.h>
-#include <sys/time.h>
-#include <climits>
-#include <mutex>
-#include <condition_variable>
 
 using namespace std;
 
@@ -33,6 +26,8 @@ public:
   Condition( Monitor* m ) {}
   // ...
 };
+
+//========================== Inode =================================
 
 class Inode: Monitor {
 public: 
@@ -65,6 +60,8 @@ public:
 vector<Inode> ilist;
 vector<DeviceDriver*> drivers;
 
+//========================== DeviceDriver =================================
+
 class DeviceDriver: public Monitor {
 	public:
 		Condition ok2read;
@@ -76,12 +73,14 @@ class DeviceDriver: public Monitor {
 		string driverName;
 
 	DeviceDriver(string driverName)
-		:Monitor(),ok2read(this),
-		ok2write(this),deviceNumber(drivers.size()),
-		driverName( driverName )
+		: Monitor(),
+			ok2read(this), 
+			ok2write(this), 
+			deviceNumber(drivers.size()), 
+			driverName( driverName )
 		{
 			drivers.push_back(this);
-			++inode->openCount;
+			//++inode->openCount;	//segfault
 		}
 
 	~DeviceDriver() {
@@ -100,24 +99,32 @@ class DeviceDriver: public Monitor {
 
 };
 
+//========================== iostreamDevice =================================
 
-
-class iostreamDevice : DeviceDriver {
+class istreamDevice : DeviceDriver {
 
 	public: 
 		int inodeCount = 0;
-		int openCount = 0;
-		
-		iostream* bytes;
+		int openCount = 0; 	//access_counter
 
-		iostreamDevice( iostream* io )
-			: bytes(io), DeviceDriver("iostreamDevice")
+		istream* bytes;	//data - iostream* gives errors
+
+		//my additions
+		mode_t mode;
+		size_t offset;
+
+		unsigned int flags;
+		
+		
+
+		istreamDevice( istream* io )
+			: bytes(io), DeviceDriver("istreamDevice")
 		{
 			readable = true;
 			writeable = true;
 		}
 
-		~iostreamDevice() {
+		~istreamDevice() {
 		}
 
 		int open( const char* pathname, int flags) {
@@ -129,19 +136,35 @@ class iostreamDevice : DeviceDriver {
 		}
 
 		int read( int fd, void* buf, size_t count) {
+			istreamDevice* iD = (istreamDevice*)drivers[fd];
 
+			cout <<"drivers vector size " << drivers.size() << endl;
+			cout <<"deviceNumber "<< iD->deviceNumber << endl;
+			cout <<"driverName "<< iD->driverName << endl;
+
+			int i = 0;
+
+			while((buf = (void*)(bytes->get()))) //while not end of file 
+			{
+				//bytes->get((char*)buf, count);	
+				cout << "reading this into buf " << buf << endl;
+				i++;
+			}
+
+			return i;		
 		}
 
 		int write( int fd, void* buf, size_t count) {
 
+			
 		}
 
 		int seek( int fd, off_t offset, int whence) {
-
+			
 		}
 
 		int rewind( int pos ) {
-
+			
 		}
 
 		/*
@@ -151,4 +174,52 @@ class iostreamDevice : DeviceDriver {
 		//*/
 };
 
-int main() {}
+int main() {
+
+	string testString = "";
+	cin >> testString;
+	cout << "testing this = " << testString << endl;
+
+	char buf[256];
+	char hi[6] = "hello";
+
+	istreamDevice i = istreamDevice(&cin);
+
+	while(1){
+		cout << "amount read " << i.read(0,buf,256) << endl;		
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
