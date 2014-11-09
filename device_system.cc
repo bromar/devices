@@ -3,6 +3,9 @@
 #include <vector>
 #include <list>
 #include <cassert>
+#include <strstream>
+#include <cstring>
+#include <cstdio>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -101,30 +104,28 @@ class DeviceDriver: public Monitor {
 
 //========================== iostreamDevice =================================
 
-class istreamDevice : DeviceDriver {
+class iostreamDevice : DeviceDriver {
 
 	public: 
 		int inodeCount = 0;
 		int openCount = 0; 	//access_counter
 
-		istream* bytes;	//data - iostream* gives errors
+		iostream* bytes;		//data
 
 		//my additions
 		mode_t mode;
-		size_t offset;
+		size_t offset = 0;
 
 		unsigned int flags;
 		
-		
-
-		istreamDevice( istream* io )
-			: bytes(io), DeviceDriver("istreamDevice")
+		iostreamDevice( iostream* io )
+			: bytes(io), DeviceDriver("iostreamDevice")
 		{
 			readable = true;
 			writeable = true;
 		}
 
-		~istreamDevice() {
+		~iostreamDevice() {
 		}
 
 		int open( const char* pathname, int flags) {
@@ -136,30 +137,64 @@ class istreamDevice : DeviceDriver {
 		}
 
 		int read( int fd, void* buf, size_t count) {
-			istreamDevice* iD = (istreamDevice*)drivers[fd];
 
-			cout <<"drivers vector size " << drivers.size() << endl;
-			cout <<"deviceNumber "<< iD->deviceNumber << endl;
-			cout <<"driverName "<< iD->driverName << endl;
+			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
+
+			//cout <<"drivers vector size " << drivers.size() << endl;
+			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
+			//cout <<"driverName "<< ioD->driverName << endl;
+
+			char* buffer = (char*)buf;
 
 			int i = 0;
-
-			while((buf = (void*)(bytes->get()))) //while not end of file 
+			for(i = 0; i < count; i++)
 			{
-				//bytes->get((char*)buf, count);	
-				cout << "reading this into buf " << buf << endl;
-				i++;
+				buffer[i] = bytes->get();
+				offset--; 					//increment or decrement as we consume 
 			}
-
 			return i;		
 		}
 
-		int write( int fd, void* buf, size_t count) {
+		int write( int fd, void const* buf, size_t count) {
+			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
 
+			//cout <<"drivers vector size " << drivers.size() << endl;
+			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
+			//cout <<"driverName "<< ioD->driverName << endl;
+
+			char* buffer = (char*)buf;
+
+			int i = 0;
+			for(i = 0; i < count; i++)
+			{
+				bytes->put(buffer[i]);
+				offset++;					//increment or decrement as we consume 
+			}
+			return i;	
 			
 		}
 
 		int seek( int fd, off_t offset, int whence) {
+			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
+
+			//cout <<"drivers vector size " << drivers.size() << endl;
+			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
+			//cout <<"driverName "<< ioD->driverName << endl;
+
+			if(whence == SEEK_SET)
+			{
+				this->offset = offset;
+			}
+			else if(whence == SEEK_CUR)
+			{
+				this->offset += offset;
+			}
+			else if(whence == SEEK_END)
+			{
+				//this.offset 
+			} 
+			bytes->seekg(this->offset);
+			return this->offset	;
 			
 		}
 
@@ -176,18 +211,36 @@ class istreamDevice : DeviceDriver {
 
 int main() {
 
-	string testString = "";
-	cin >> testString;
-	cout << "testing this = " << testString << endl;
+	char buf[1024];
+	strstreambuf sb(buf,1024,buf);
+	iostream s(&sb);
+	iostreamDevice i = iostreamDevice(&s);
 
-	char buf[256];
-	char hi[6] = "hello";
+	char* buf2 = "hello there my friend";	
 
-	istreamDevice i = istreamDevice(&cin);
+	/*//test read and write
+	cout << "amount write: " << i.write(0,buf2,1024) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
-	while(1){
-		cout << "amount read " << i.read(0,buf,256) << endl;		
-	}
+	cout << "amount read: " << i.read(0,buf,1024) << endl;
+	cout << "read this: "<< buf << endl;
+	cout << "====================" << endl;
+	//*/
+
+	//test read and write and seek
+	cout << "amount write: " << i.write(0,buf2,1024) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "seeking: " << i.seek(0, 4, SEEK_SET) << endl;
+	cout << "====================" << endl;
+
+	cout << "amount read: " << i.read(0,buf,1024) << endl;
+	cout << "read this: "<< buf << endl;
+	cout << "end" << endl;
+	//*/
+
+
+	return 0;
 }
 
 
