@@ -102,42 +102,48 @@ class DeviceDriver: public Monitor {
 
 
 
-class iostreamDevice : DeviceDriver {
+class fstreamDevice : DeviceDriver {
 
 	public: 
 		int inodeCount = 0;
 		int openCount = 0;
 		
-		iostream* bytes;
+		fstream* bytes;
 
-		iostreamDevice( iostream* io )
-			: bytes(io), DeviceDriver("iostreamDevice")
+		fstreamDevice( fstream* io )
+			: bytes(io), DeviceDriver("fstreamDevice")
 		{
 			readable = true;
 			writeable = true;
 		}
 
-		~iostreamDevice() {
+		~fstreamDevice() {
 		}
 
 		int open( const char* pathname, int flags) {
-			
+			FILE *fp;
+			fp = fopen(pathname, flags)
+			//cout << "File opened" << endl;
+
+			return fp ? 0 : -1;
 		}
 
 		int close( int fd) {
+			//cout << "File closed" << endl;
 
+			
 		}
 
 		int read( int fd, void* buf, size_t count) {
-
+			//similar to iostream
 		}
 
 		int write( int fd, void* buf, size_t count) {
-
+			//similar to iostream
 		}
 
 		int seek( int fd, off_t offset, int whence) {
-
+			//similar to iostream
 		}
 
 		int rewind( int pos ) {
