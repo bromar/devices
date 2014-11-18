@@ -87,7 +87,7 @@ class DeviceDriver: public Monitor {
 		}
 
 	~DeviceDriver() {
-		--inode->openCount;
+		//--inode->openCount;
 	}
 
 	virtual int read() {}
@@ -104,7 +104,7 @@ class DeviceDriver: public Monitor {
 
 //========================== iostreamDevice =================================
 
-class iostreamDevice : DeviceDriver {
+class iostreamDevice : public DeviceDriver {
 
 	public: 
 		int inodeCount = 0;
@@ -121,85 +121,139 @@ class iostreamDevice : DeviceDriver {
 		iostreamDevice( iostream* io )
 			: bytes(io), DeviceDriver("iostreamDevice")
 		{
-			readable = true;
-			writeable = true;
+			cout << "*Inside iostreamDevice()\n";
+			readable = false;
+			writeable = false;
+			cout << "readable: " << readable << endl;
+			cout << "writeable: " << writeable << endl;
 		}
 
 		~iostreamDevice() {
 		}
 
 		int open( const char* pathname, int flags) {
-			
+			readable = !(flags & 0x01);
+			writeable = (flags & 0x01) | (flags & 0x02);
+			cout << "readable: " << readable << endl;
+			cout << "writeable: " << writeable << endl;
+			driverName = pathname;
+			cout << "driverName: " << driverName << endl;
+			openCount++;
+			return deviceNumber; // return fd to device driver
 		}
 
 		int close( int fd) {
-
+			openCount--;
+			//~iostreamDevice();
+			return 0;
 		}
 
 		int read( int fd, void* buf, size_t count) {
-
 			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
-
-			//cout <<"drivers vector size " << drivers.size() << endl;
-			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
-			//cout <<"driverName "<< ioD->driverName << endl;
-
 			char* buffer = (char*)buf;
 
 			int i = 0;
 			for(i = 0; i < count; i++)
 			{
+				//return if eof encountered with amount written
+				if(bytes->peek() == EOF)
+					return i;
+
+				//read character from bytes then store into buffer
+				cout << "read position " << bytes->tellg() << endl;
 				buffer[i] = bytes->get();
-				offset--; 					//increment or decrement as we consume 
+				cout <<"reading from device " << (char)buffer[i] << endl;
+				offset++; 						
 			}
+			//return with amount read
 			return i;		
 		}
 
 		int write( int fd, void const* buf, size_t count) {
 			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
-
-			//cout <<"drivers vector size " << drivers.size() << endl;
-			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
-			//cout <<"driverName "<< ioD->driverName << endl;
-
 			char* buffer = (char*)buf;
 
 			int i = 0;
 			for(i = 0; i < count; i++)
 			{
+				//write character from buffer into bytes
+				cout << "write position " << bytes->tellp() << endl;
 				bytes->put(buffer[i]);
-				offset++;					//increment or decrement as we consume 
+				cout <<"writing into device " << (char)buffer[i] << endl;
+				offset++;				
 			}
+			//return with amount written
 			return i;	
 			
 		}
 
-		int seek( int fd, off_t offset, int whence) {
+		int seek( int fd, off_t offsetIn, int whence) {
 			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
 
-			//cout <<"drivers vector size " << drivers.size() << endl;
-			//cout <<"deviceNumber "<< ioD->deviceNumber << endl;
-			//cout <<"driverName "<< ioD->driverName << endl;
-
+			//set position to passed in position
 			if(whence == SEEK_SET)
 			{
-				this->offset = offset;
+				//save position in our offset variable
+				offset = offsetIn;
+
+				//set positions
+				bytes->seekp(offsetIn,ios_base::beg);
+				bytes->seekg(offsetIn,ios_base::beg);
 			}
+
+			//set position to current position + passed in position
 			else if(whence == SEEK_CUR)
 			{
-				this->offset += offset;
+				//get end position 
+				off_t save = bytes->tellp();
+				bytes->seekp(0, ios_base::end);
+				off_t end = bytes->tellp();
+				bytes->seekp(save);
+
+				//set offset to current offset + offset passed in
+				offset += offsetIn;
+
+				//if offset is past the end position then wrap around
+				if (offset > end)
+				{
+					//set positions if wrapped around
+					offset = offset % end;
+					bytes->seekp(offset, ios_base::beg);
+					bytes->seekg(offset, ios_base::beg);
+					return offset;
+				}
+
+				//set positions if not wrapped around
+				bytes->seekp(offsetIn, ios_base::cur);
+				bytes->seekg(offsetIn, ios_base::cur);
+				cout << "SEEK read position " << bytes->tellg() << endl;
+				cout << "SEEK write position " << bytes->tellp() << endl;
 			}
+	
+			//NOT SUPPORTED
 			else if(whence == SEEK_END)
 			{
-				//this.offset 
+				//NOT SUPPORTED
+				/*
+				//get end position to save in our offset variable
+				off_t save = bytes->tellp();
+				bytes->seekp(0, ios_base::end);
+				offset = bytes->tellp();
+				offset += offsetIn;
+				bytes->seekp(save);
+
+				//set positions
+				bytes->seekp(offsetIn,ios_base::end);
+				bytes->seekg(offsetIn,ios_base::end);
+				//*/
 			} 
-			bytes->seekg(this->offset);
-			return this->offset	;
+			return offset;
 			
 		}
 
+		//rewind is a modification of seek
 		int rewind( int pos ) {
-			
+
 		}
 
 		/*
@@ -209,70 +263,107 @@ class iostreamDevice : DeviceDriver {
 		//*/
 };
 
-int main() {
-
-	char buf[1024];
-	strstreambuf sb(buf,1024,buf);
-	iostream s(&sb);
-	iostreamDevice i = iostreamDevice(&s);
-
-	char* buf2 = "hello there my friend";	
-
-	/*//test read and write
-	cout << "amount write: " << i.write(0,buf2,1024) << endl;
-	cout << "wrote this: " << buf2 << endl;
-	cout << "====================" << endl;
-
-	cout << "amount read: " << i.read(0,buf,1024) << endl;
-	cout << "read this: "<< buf << endl;
-	cout << "====================" << endl;
-	//*/
-
-	//test read and write and seek
-	cout << "amount write: " << i.write(0,buf2,1024) << endl;
-	cout << "wrote this: " << buf2 << endl;
-	cout << "seeking: " << i.seek(0, 4, SEEK_SET) << endl;
-	cout << "====================" << endl;
-
-	cout << "amount read: " << i.read(0,buf,1024) << endl;
-	cout << "read this: "<< buf << endl;
-	cout << "end" << endl;
-	//*/
-
-
-	return 0;
+//cout messes up output, so wrote my own function
+void myPrint(char* buf, int size)
+{
+	cout << "============= ";
+	for(int i = 0; i < size; i++)
+	{
+		cout << buf[i];
+	}
+	cout << endl;
 }
 
+int main() {
 
+	char buf[50];
+	char buf2[] = "hello there my friend";	
+	char buf3[1024];
 
+	string str; 
+	string test = "hello there my friend";
 
+	memset(buf,0,50);
+	memset(buf3,0,1024);
 
+	//create i device
+	strstreambuf sb(buf,50,buf);
+	iostream s(&sb);
+	iostreamDevice i = iostreamDevice(&s);
+	                
+	//create ios device     
+ 	stringstream SSstream;   
+	iostreamDevice ios = iostreamDevice(&SSstream);
+	int iosFD = ios.open(ios.driverName.c_str(), O_RDWR);  
+	//int iosFD = ios.open("iostreamDevice", O_RDWR);  //does not work !!! does open need to be rewritten?
 
+	/*//test read and write
+	cout << "amount write: " << i.write(0,buf2,50) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
+	cout << "amount read: " << i.read(0,buf,40) << endl;
+	cout << "read this: "<< buf << endl;
+	cout << "====================" << endl;
+	//*/
 
+	/*//test read and write
+	cout << "amount write: " << i.write(0,buf2,25) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
+	cout << "amount write: " << i.write(0,buf2,25) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
+	cout << "amount read: " << i.read(0,buf,50) << endl;
+	cout << "read this: "<< buf << endl;
+	cout << "====================" << endl;
+	//*/
 
+	/*//test seeking 
+	cout << "amount write: " << i.write(0,buf2,25) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
+	cout << "seeking to : " << i.seek(0,5,SEEK_SET) << endl;
+	cout << "====================" << endl;
 
+	cout << "amount write: " << i.write(0,buf2,25) << endl;
+	cout << "wrote this: " << buf2 << endl;
+	cout << "====================" << endl;
 
+	cout << "amount read: " << i.read(0,buf,50) << endl;
+	cout << "read this: "<< buf << endl;
+	cout << "====================" << endl;
+	//*/
 
+	///* 
+ 	while (getline(cin, str)) // Reads line into str
+	{ 
+		//write str into stream
+		ios.write(iosFD, str.c_str(), str.length());
+ 	}
 
+	//read 100 characters from ios device into buf3, then print buf3
+	ios.read(iosFD,buf3,100);
+	myPrint(buf3,100);
+   //*/
 
+	//code below breaks when writing into ios device from buf2 !!! when using prevoius code lines 340 - 348
+	//this works if previous code lines 340 - 348 is commented out
 
+	//write buf2 to ios device twice
+	ios.write(iosFD,buf2,50);
+	ios.write(iosFD,buf2,50);
+	
+	//seek 5 from beginning then seek 5 from current position
+	ios.seek(iosFD,5,SEEK_SET);
+	ios.seek(iosFD,5,SEEK_CUR);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	//read 100 characters from ios device into buf3, then print buf3
+	ios.read(iosFD,buf3,100);
+	myPrint(buf3,100);
+	
+ 	return 0;
+}
