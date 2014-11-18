@@ -39,7 +39,7 @@ all:
 		$(CC) $(FLAGS) -o $(MAIN_OUT).out $(MAIN_TARGETS) $(LIBS)
 
 test:
-		./$(MAIN_OUT)
+		./$(MAIN_OUT).out
 
 print:
 		a2ps --font-size=8pts -E C++ --line-numbers=1 -M letter $(INCLUDE) $(MAIN_TARGETS) Makefile -o printout.ps
