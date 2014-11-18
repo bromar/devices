@@ -28,77 +28,101 @@ class DeviceDriver;
 vector<Inode> ilist;
 vector<DeviceDriver*> drivers;
 
-class DeviceDriver: public Monitor {
-	public:
-		Condition ok2read;
-		Condition ok2write;
-		Inode* inode;
-		bool readable;
-		bool writeable;
-		int deviceNumber;
-		string driverName;
+namespace devices {
+	class DeviceDriver: public Monitor {
+		public:
+			Condition ok2read;
+			Condition ok2write;
+			Inode* inode;
+			bool readable;
+			bool writeable;
+			int deviceNumber;
+			string driverName;
 
-	DeviceDriver(string driverName)
-		:Monitor(),ok2read(this),
-		ok2write(this),deviceNumber(drivers.size()),
-		driverName( driverName )
-		{
-			drivers.push_back(this);
-			++inode->openCount;
+		DeviceDriver(string driverName)
+			:Monitor(),ok2read(this),
+			ok2write(this),deviceNumber(drivers.size()),
+			driverName( driverName )
+			{}
+
+		~DeviceDriver() {
+			--inode->openCount;
 		}
 
-	~DeviceDriver() {
-		--inode->openCount;
-	}
+		virtual int read() {}
+		virtual int write() {}
+		virtual int seek() {}
+		virtual int rewind() {}
+		virtual int ioctl() {}
+		virtual void online() {}
+		virtual void offline() {}
+		virtual void fireup() {}
+		virtual void suspend() {}
 
-	virtual int read() {}
-	virtual int write() {}
-	virtual int seek() {}
-	virtual int rewind() {}
-	virtual int ioctl() {}
-	virtual void online() {}
-	virtual void offline() {}
-	virtual void fireup() {}
-	virtual void suspend() {}
+	};
 
-};
+	class iostreamDevice : DeviceDriver {
 
-
-
-class iostreamDevice : DeviceDriver {
-
-	public: 
-		int inodeCount = 0;
-		int openCount = 0;
+		public: 
+			int inodeCount;
+			int openCount;
 		
-		iostream* bytes;
+			iostream* bytes;
 
-		iostreamDevice( iostream* io )
-			: bytes(io), DeviceDriver("iostreamDevice")
-		{
-			readable = true;
-			writeable = true;
-		}
+			iostreamDevice( iostream* io )
+				: bytes(io), DeviceDriver("iostreamDevice")
+			{}
 
-		~iostreamDevice() {}
+			~iostreamDevice() {}
 
-		int open( const char* pathname, int flags) {}
+			int open( const char* pathname, int flags) {}
 
-		int close( int fd) {}
+			int close( int fd) {}
 
-		int read( int fd, void* buf, size_t count) {}
+			int read( int fd, void* buf, size_t count) {}
 
-		int write( int fd, void* buf, size_t count) {}
+			int write( int fd, void* buf, size_t count) {}
 
-		int seek( int fd, off_t offset, int whence) {}
+			int seek( int fd, off_t offset, int whence) {}
 
-		int rewind( int pos ) {}
+			int rewind( int pos ) {}
 
-		/*
-		int ioctl(  ) {
+			/*
+			int ioctl(  ) {
+	
+			}
+			//*/
+	};
+	
+	class stringstreamDevice : DeviceDriver {
+		public:
+			int inodeCount;
+			int openCount;
+			stringstream* bytes;
+		
+			stringstreamDevice( stringstream* ss )
+			: bytes(ss), Device("stringstreamDevice")
+			{}
+			~stringstreamDevice() {}
+		
+			int open(const char*, int) {}
+		
+			int close(int) {}
+		
+			int read(int, void*, size_t) {}
+	
+			int write( int, void*, size_t) {}
+	
+			int seek(int, off_t, int) {}
+	
+			int rewind(int) {}
+	
+			/*
+			int ioctl( ) {
+			}
+			//*/
+	};
+}
 
-		}
-		//*/
-};
 
 #endif
