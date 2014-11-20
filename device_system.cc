@@ -1,3 +1,32 @@
+/*#include <string>
+#include <iostream>
+#include <vector>
+#include <list>
+#include <cassert>
+
+#include <sstream>
+#include <errno.h>
+
+#include <pthread.h>
+#include <semaphore.h>
+#include <map>
+#include <queue>
+#include <iomanip>
+#include <signal.h>
+#include <sys/time.h>
+#include <climits>
+#include <mutex>
+#include <condition_variable>
+
+
+#include <strstream>
+#include <cstring>
+#include <cstdio>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>*/
+
 #include <string>
 #include <iostream>
 #include <vector>
@@ -16,9 +45,16 @@
 
 using namespace std;
 
+/*
+	stream flags in octal - base eight
+*/
+#define ODD_RDONLY 	00
+#define ODD_WRONLY 	01
+#define ODD_RDWR 	02
+
 #define EXCLUSION Sentry exclusion(this); exclusion.touch();
 
-class DeviceDriver;
+class Device;
 
 class Monitor {
   // ...
@@ -30,9 +66,7 @@ public:
   // ...
 };
 
-//========================== Inode =================================
-
-class Inode: Monitor {
+class Inode : Monitor {
 public: 
 	int linkCount = 0;
 	int openCount = 0;
@@ -46,9 +80,10 @@ public:
 	}
 
 	int unlink() {
-		assert( linkCount > 0);
+		assert(linkCount > 0);
 		--linkCount;
-		cleanup();	
+		cleanup();
+		return 0;
 	}
 	
 	void cleanup() {
@@ -56,45 +91,80 @@ public:
 			//throwaway stuff
 		}
 	}
-	DeviceDriver* driver;
+	Device* driver;
 	string* bytes;
 };
 
 vector<Inode> ilist;
-vector<DeviceDriver*> drivers;
+vector<Device*> drivers;
+// used to maintain a record of reusable file descriptors
+// deviceNumbers
+vector<int> freedDeviceNumbers;
 
-//========================== DeviceDriver =================================
-
-class DeviceDriver: public Monitor {
+class Device: public Monitor {
 	public:
 		Condition ok2read;
 		Condition ok2write;
-		Inode* inode;
+		Inode *inode;
 		bool readable;
 		bool writeable;
 		int deviceNumber;
 		string driverName;
 
-	DeviceDriver(string driverName)
-		: Monitor(),
-			ok2read(this), 
-			ok2write(this), 
-			deviceNumber(drivers.size()), 
-			driverName( driverName )
+	// this constructor originally had an initialization of
+	// deviceNumber(drivers.size()) which is not safe. the
+	// case where drivers is resized (file descriptors removed)
+	// will cause at least two device drivers to have identical
+	// device numbers (indices of vector drivers).
+	// solution is to scan vector drivers for next available
+	// index (file descriptor).
+	Device(string driverName)
+		:Monitor(),ok2read(this),
+		ok2write(this),
+		driverName( driverName )
 		{
+			// check to see if we may re-use a file descriptor
+			if (freedDeviceNumbers.size() > 0)
+			{
+				deviceNumber = freedDeviceNumbers.front();
+				freedDeviceNumbers.erase(freedDeviceNumbers.begin());
+			}
+			else
+			{
+				deviceNumber = drivers.size();
+			}
 			drivers.push_back(this);
-			//++inode->openCount;	//segfault
+			//inode->openCount++;
 		}
 
-	~DeviceDriver() {
-		//--inode->openCount;
-	}
+	~Device() {
+		//inode->openCount--;
 
+		// we must remove device driver from vector
+		// look into remove_if
+		auto i = begin(drivers);
+		while (i != end(drivers)) {
+		    if ((*i)->deviceNumber == deviceNumber) {
+		        i = drivers.erase(i);
+		    }
+		    else {
+		        i++;
+		    }
+		}
+	}
+	
+	/*virtual int open() {}
 	virtual int read() {}
 	virtual int write() {}
 	virtual int seek() {}
 	virtual int rewind() {}
-	virtual int ioctl() {}
+	virtual int ioctl() {}*/
+	virtual void open() {}
+	virtual void read() {}
+	virtual void write() {}
+	virtual void seek() {}
+	virtual void rewind() {}
+	virtual void ioctl() {}
 	virtual void online() {}
 	virtual void offline() {}
 	virtual void fireup() {}
@@ -102,54 +172,67 @@ class DeviceDriver: public Monitor {
 
 };
 
-//========================== iostreamDevice =================================
 
-class iostreamDevice : public DeviceDriver {
+class streamDevice : Device {
 
 	public: 
 		int inodeCount = 0;
-		int openCount = 0; 	//access_counter
-
-		iostream* bytes;		//data
-
-		//my additions
+		int openCount = 0;
+		
+		iostream * bytes;
 		mode_t mode;
 		size_t offset = 0;
 
-		unsigned int flags;
-		
-		iostreamDevice( iostream* io )
-			: bytes(io), DeviceDriver("iostreamDevice")
+		streamDevice( iostream *io )
+			: bytes(io), Device("streamDevice")
 		{
-			cout << "*Inside iostreamDevice()\n";
+			cout << "*Inside streamDevice()\n";
 			readable = false;
 			writeable = false;
 			cout << "readable: " << readable << endl;
 			cout << "writeable: " << writeable << endl;
 		}
 
-		~iostreamDevice() {
+		~streamDevice() {
+			// dunno what to do here
 		}
 
-		int open( const char* pathname, int flags) {
+		int open(const char* pathname, int flags) {
 			readable = !(flags & 0x01);
 			writeable = (flags & 0x01) | (flags & 0x02);
-			cout << "readable: " << readable << endl;
-			cout << "writeable: " << writeable << endl;
+			//cout << "readable: " << readable << endl;
+			//cout << "writeable: " << writeable << endl;
 			driverName = pathname;
-			cout << "driverName: " << driverName << endl;
+			//cout << "driverName: " << driverName << endl;
 			openCount++;
 			return deviceNumber; // return fd to device driver
 		}
 
-		int close( int fd) {
-			openCount--;
-			//~iostreamDevice();
-			return 0;
+		// return non-zero on error
+		// should close() be a general function outside of a class?
+		// seems strange to be able to close other FDs from within
+		// a specific (this) device. Possibly change to int close()
+		// where the device to be closed is this.
+		int close(int fd) {
+			//openCount = (openCount > 0) ? openCount - 1 : 0;
+			// remove device from vector of drivers
+			auto i = begin(drivers);
+			while (i != end(drivers)) {
+			    if ((*i)->deviceNumber == fd) {
+			        // push current deviceNumber onto available
+					freedDeviceNumbers.push_back((*i)->deviceNumber);
+			        i = drivers.erase(i);
+			        return 0;
+			    }
+			    else {
+			        i++;
+			    }
+			}
+			return 1;
 		}
 
-		int read( int fd, void* buf, size_t count) {
-			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
+		int read(int fd, void* buf, size_t count) {
+			streamDevice* ioD = (streamDevice*)drivers[fd];
 			char* buffer = (char*)buf;
 
 			int i = 0;
@@ -159,36 +242,37 @@ class iostreamDevice : public DeviceDriver {
 				if(bytes->peek() == EOF)
 					return i;
 
+				int tmp = bytes->tellg();
+				((char*)buf)[i] = bytes->get();
+
 				//read character from bytes then store into buffer
-				cout << "read position " << bytes->tellg() << endl;
-				buffer[i] = bytes->get();
-				cout <<"reading from device " << (char)buffer[i] << endl;
+				cout << "Reading '" << (char)buffer[i] << "' from position tellg() " << tmp
+					<< " and position offset " << offset << " of device '" << ioD->driverName << "'" << endl;
 				offset++; 						
 			}
 			//return with amount read
 			return i;		
 		}
 
-		int write( int fd, void const* buf, size_t count) {
-			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
+		int write(int fd, void const* buf, size_t count) {
+			streamDevice* ioD = (streamDevice*)drivers[fd];
 			char* buffer = (char*)buf;
 
 			int i = 0;
 			for(i = 0; i < count; i++)
 			{
 				//write character from buffer into bytes
-				cout << "write position " << bytes->tellp() << endl;
+				cout << "Writing '" << (char)buffer[i] << "' at position " << bytes->tellp()
+					<< " of device '" << ioD->driverName << "'" << endl;
 				bytes->put(buffer[i]);
-				cout <<"writing into device " << (char)buffer[i] << endl;
-				offset++;				
+				offset++;
 			}
 			//return with amount written
-			return i;	
-			
+			return i;
 		}
 
-		int seek( int fd, off_t offsetIn, int whence) {
-			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
+		int seek(int fd, off_t offsetIn, int whence) {
+			streamDevice* ioD = (streamDevice*)drivers[fd];
 
 			//set position to passed in position
 			if(whence == SEEK_SET)
@@ -197,8 +281,8 @@ class iostreamDevice : public DeviceDriver {
 				offset = offsetIn;
 
 				//set positions
-				bytes->seekp(offsetIn,ios_base::beg);
-				bytes->seekg(offsetIn,ios_base::beg);
+				bytes->seekp(offsetIn,ios_base::beg);//move put pointer - write
+				bytes->seekg(offsetIn,ios_base::beg);//move get pointer - read
 			}
 
 			//set position to current position + passed in position
@@ -213,11 +297,16 @@ class iostreamDevice : public DeviceDriver {
 				//set offset to current offset + offset passed in
 				offset += offsetIn;
 
+				//JPC20141120 - Changed to >= since end is one position past actual strlen.
 				//if offset is past the end position then wrap around
-				if (offset > end)
+				if (offset >= end)
 				{
+					cout << "SEEK offset " << offset << endl;
+					cout << "SEEK end " << end << endl;
 					//set positions if wrapped around
-					offset = offset % end;
+					//JPC20141120 - Since ios_base:end is one character beyond actual strlen, need (end-1).
+					offset = offset % (end-1);
+					cout << "SEEK new offset " << offset << endl;
 					bytes->seekp(offset, ios_base::beg);
 					bytes->seekg(offset, ios_base::beg);
 					return offset;
@@ -252,15 +341,22 @@ class iostreamDevice : public DeviceDriver {
 		}
 
 		//rewind is a modification of seek
-		int rewind( int pos ) {
+		//reset file ptr position to beginning (position 0). SEEK_SET
+		int rewind(int pos) {
+			//seek(fd,0,SEEK_SET);
+			offset = pos;
 
+			//set positions
+			bytes->seekp(offset,ios_base::beg);//move put pointer - write
+			bytes->seekg(offset,ios_base::beg);//move get pointer - read
+			return 0;
 		}
 
 		/*
-		int ioctl(  ) {
+		int ioctl(int d, unsigned long request, ... ) {
 
 		}
-		//*/
+		*/
 };
 
 class stringstreamDevice : Device {
@@ -329,20 +425,20 @@ class stringstreamDevice : Device {
 		return i;
 	}
 	int seek( int fd, off_t offset, int whence) {
-		if( whence == ios_base::SEEK_SET )
+		if( whence == SEEK_SET )
 		{
-			bytes->seekg(offset,beg);
-			bytes->seekp(offset,beg);
+			bytes->seekg(offset,ios_base::beg);
+			bytes->seekp(offset,ios_base::beg);
 		}
-		else if( whence == ios_base::SEEK_CUR )
+		else if( whence == SEEK_CUR )
 		{
-			bytes->seekg(offset,cur);
-			bytes->seekp(offset,cur);
+			bytes->seekg(offset,ios_base::cur);
+			bytes->seekp(offset,ios_base::cur);
 		}
-		else if( whence == ios_base::SEEK_END )
+		else if( whence == SEEK_END )
 		{
-			bytes->seekg(offset,end)
-			bytes->seekp(offset,end)
+			bytes->seekg(offset,ios_base::end);
+			bytes->seekp(offset,ios_base::end);
 		}
 		return offset;
 	}
@@ -355,10 +451,9 @@ class stringstreamDevice : Device {
 	//*/
 };
 
-//cout messes up output, so wrote my own function
 void myPrint(char* buf, int size)
 {
-	cout << "============= ";
+	cout << "myPrint: ";
 	for(int i = 0; i < size; i++)
 	{
 		cout << buf[i];
@@ -368,26 +463,55 @@ void myPrint(char* buf, int size)
 
 int main() {
 
-	char buf[50];
-	char buf2[] = "hello there my friend";	
-	char buf3[1024];
+	cout << "Hello world!\n\n";
 
-	string str; 
-	string test = "hello there my friend";
+	char buf[50];
 
 	memset(buf,0,50);
-	memset(buf3,0,1024);
 
 	//create i device
 	strstreambuf sb(buf,50,buf);
-	iostream s(&sb);
-	iostreamDevice i = iostreamDevice(&s);
+	iostream stream(&sb);
+
+	streamDevice is1 = streamDevice(&stream);
+	cout << "Read yes --\n";
+	int dn1 = is1.open("~/Desktop/tes1.txt",ODD_RDONLY);
+	cout << "deviceNumber: " << dn1 << endl << endl;
+
+	streamDevice is2 = streamDevice(&stream);
+	cout << "Write yes --\n";
+	int dn2 = is2.open("~/Desktop/test2.txt",ODD_WRONLY);
+	cout << "deviceNumber: " << dn2 << endl << endl;
+	
+	streamDevice is3 = streamDevice(&stream);
+	cout << "Read+Write yes --\n";
+	int dn3 = is3.open("~/Desktop/test3.txt",ODD_RDWR);
+	cout << "deviceNumber: " << dn3 << endl << endl;
+
+	cout << "Closing deviceNumber: " << dn2 << endl << endl;
+	is2.close(dn2);
+
+	streamDevice is4 = streamDevice(&stream);
+	cout << "Write yes --\n";
+	int dn4 = is4.open("~/Desktop/test4.txt",ODD_WRONLY);
+	cout << "deviceNumber: " << dn4 << endl << endl;
+
+	cout << "\nBye cruel world!\n";
+
+
+
+	/* --- TodBranch testing --- */
+	char buf2[] = "hello there my friend";//len 21
+	char buf3[1024];
+	string str;
+
+	memset(buf3,0,1024);
+
 	                
 	//create ios device     
  	stringstream SSstream;   
-	iostreamDevice ios = iostreamDevice(&SSstream);
-	int iosFD = ios.open(ios.driverName.c_str(), O_RDWR);  
-	//int iosFD = ios.open("iostreamDevice", O_RDWR);  //does not work !!! does open need to be rewritten?
+	streamDevice ios = streamDevice(&SSstream);
+	int iosFD = ios.open("iostreamDevice1", O_RDWR);
 
 	/*//test read and write
 	cout << "amount write: " << i.write(0,buf2,50) << endl;
@@ -431,6 +555,7 @@ int main() {
 	//*/
 
 	///* 
+	cout << "Input some string to write to device (CTR-D to stop): ";
  	while (getline(cin, str)) // Reads line into str
 	{ 
 		//write str into stream
@@ -438,20 +563,22 @@ int main() {
  	}
 
 	//read 100 characters from ios device into buf3, then print buf3
+	ios.seek(iosFD,0,SEEK_SET);
 	ios.read(iosFD,buf3,100);
 	myPrint(buf3,100);
-   //*/
+    //*/
 
 	//code below breaks when writing into ios device from buf2 !!! when using prevoius code lines 340 - 348
 	//this works if previous code lines 340 - 348 is commented out
+	//JPC20141120 - Seems to work now.
 
 	//write buf2 to ios device twice
-	ios.write(iosFD,buf2,50);
-	ios.write(iosFD,buf2,50);
+	ios.write(iosFD,buf2,25);
+	ios.write(iosFD,buf2,25);
 	
 	//seek 5 from beginning then seek 5 from current position
 	ios.seek(iosFD,5,SEEK_SET);
-	ios.seek(iosFD,5,SEEK_CUR);
+	ios.seek(iosFD,1024,SEEK_CUR);
 
 	//read 100 characters from ios device into buf3, then print buf3
 	ios.read(iosFD,buf3,100);
@@ -464,8 +591,10 @@ int main() {
 	char writeBuf[14] = "Hello, world!";
 	char* readBuf = new char[14];
 	
+	/*segfault
+
 	// Open a file to test our input and output.
-	ssDeviceFd = ssDevice->open("writeTest.txt", 2);
+	//ssDeviceFd = ssDevice->open("writeTest.txt", 2);  //segfault here
 
 	assert( ssDeviceFd != -1 );
 	cerr << "Write test stream opened, fd = " << ssDeviceFd << "\n";
@@ -487,6 +616,8 @@ int main() {
 	cout << "Stream contents written to read-test stream\n";
 	ssDevice->read(ssDeviceFd, readBuf, 14);
 	cout << "Contents stored in buffer: " << readBuf << endl;
+	
+	//*/
 	
  	return 0;
 }
