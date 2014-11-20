@@ -240,8 +240,10 @@ class streamDevice : Device {
 			{
 				//return if eof encountered with amount written
 				if(bytes->peek() == EOF)
+				{
+					bytes->clear(); //clear eofbit after reading eof
 					return i;
-
+				}
 				int tmp = bytes->tellg();
 				((char*)buf)[i] = bytes->get();
 
@@ -375,7 +377,7 @@ class stringstreamDevice : Device {
 	int open( const char* pathname, int flags) {
 		//Unable to get rid of the error for specifying the inode kind.
 		//inode->kind = device;
-		inode->driver = this;
+		//inode->driver = this;
 		if( flags == O_RDONLY )
 		{
 			readable = true;
@@ -563,7 +565,7 @@ int main() {
  	}
 
 	//read 100 characters from ios device into buf3, then print buf3
-	ios.seek(iosFD,0,SEEK_SET);
+	//ios.seek(iosFD,0,SEEK_SET);
 	ios.read(iosFD,buf3,100);
 	myPrint(buf3,100);
     //*/
@@ -578,7 +580,7 @@ int main() {
 	
 	//seek 5 from beginning then seek 5 from current position
 	ios.seek(iosFD,5,SEEK_SET);
-	ios.seek(iosFD,1024,SEEK_CUR);
+	ios.seek(iosFD,5,SEEK_CUR);
 
 	//read 100 characters from ios device into buf3, then print buf3
 	ios.read(iosFD,buf3,100);
@@ -591,10 +593,10 @@ int main() {
 	char writeBuf[14] = "Hello, world!";
 	char* readBuf = new char[14];
 	
-	/*segfault
+	///*segfault
 
 	// Open a file to test our input and output.
-	//ssDeviceFd = ssDevice->open("writeTest.txt", 2);  //segfault here
+	ssDeviceFd = ssDevice->open("writeTest.txt", 2);  //segfault here because of (inode->driver = this) in open function
 
 	assert( ssDeviceFd != -1 );
 	cerr << "Write test stream opened, fd = " << ssDeviceFd << "\n";
