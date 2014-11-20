@@ -121,11 +121,11 @@ class iostreamDevice : public DeviceDriver {
 		iostreamDevice( iostream* io )
 			: bytes(io), DeviceDriver("iostreamDevice")
 		{
-			cout << "*Inside iostreamDevice()\n";
+			//cout << "*Inside iostreamDevice()\n";
 			readable = false;
 			writeable = false;
-			cout << "readable: " << readable << endl;
-			cout << "writeable: " << writeable << endl;
+			//cout << "readable: " << readable << endl;
+			//cout << "writeable: " << writeable << endl;
 		}
 
 		~iostreamDevice() {
@@ -134,10 +134,10 @@ class iostreamDevice : public DeviceDriver {
 		int open( const char* pathname, int flags) {
 			readable = !(flags & 0x01);
 			writeable = (flags & 0x01) | (flags & 0x02);
-			cout << "readable: " << readable << endl;
-			cout << "writeable: " << writeable << endl;
+			//cout << "readable: " << readable << endl;
+			//cout << "writeable: " << writeable << endl;
 			driverName = pathname;
-			cout << "driverName: " << driverName << endl;
+			//cout << "driverName: " << driverName << endl;
 			openCount++;
 			return deviceNumber; // return fd to device driver
 		}
@@ -148,6 +148,7 @@ class iostreamDevice : public DeviceDriver {
 			return 0;
 		}
 
+		//JPC20141120 - Changed print statment
 		int read( int fd, void* buf, size_t count) {
 			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
 			char* buffer = (char*)buf;
@@ -159,16 +160,19 @@ class iostreamDevice : public DeviceDriver {
 				if(bytes->peek() == EOF)
 					return i;
 
+				int tmp = bytes->tellg();
+				((char*)buf)[i] = bytes->get();
+
 				//read character from bytes then store into buffer
-				cout << "read position " << bytes->tellg() << endl;
-				buffer[i] = bytes->get();
-				cout <<"reading from device " << (char)buffer[i] << endl;
+				cout << "Reading '" << (char)buffer[i] << "' from position tellg() " << tmp
+					<< " and position offset " << offset << " of device '" << ioD->driverName << "'" << endl;
 				offset++; 						
 			}
 			//return with amount read
 			return i;		
 		}
 
+		//JPC20141120 - Changed print statment
 		int write( int fd, void const* buf, size_t count) {
 			iostreamDevice* ioD = (iostreamDevice*)drivers[fd];
 			char* buffer = (char*)buf;
@@ -177,10 +181,10 @@ class iostreamDevice : public DeviceDriver {
 			for(i = 0; i < count; i++)
 			{
 				//write character from buffer into bytes
-				cout << "write position " << bytes->tellp() << endl;
+				cout << "Writing '" << (char)buffer[i] << "' at position " << bytes->tellp() 
+					<< " of device '" << ioD->driverName << "'" << endl;
 				bytes->put(buffer[i]);
-				cout <<"writing into device " << (char)buffer[i] << endl;
-				offset++;				
+				offset++;
 			}
 			//return with amount written
 			return i;	
@@ -197,8 +201,8 @@ class iostreamDevice : public DeviceDriver {
 				offset = offsetIn;
 
 				//set positions
-				bytes->seekp(offsetIn,ios_base::beg);
-				bytes->seekg(offsetIn,ios_base::beg);
+				bytes->seekp(offsetIn,ios_base::beg);//move put pointer - write
+				bytes->seekg(offsetIn,ios_base::beg);//move get pointer - read
 			}
 
 			//set position to current position + passed in position
@@ -213,11 +217,16 @@ class iostreamDevice : public DeviceDriver {
 				//set offset to current offset + offset passed in
 				offset += offsetIn;
 
+				//JPC20141120 - Changed to >= since end is one position past actual strlen.
 				//if offset is past the end position then wrap around
-				if (offset > end)
+				if (offset >= end)
 				{
+					cout << "SEEK offset " << offset << endl;
+					cout << "SEEK end " << end << endl;
 					//set positions if wrapped around
-					offset = offset % end;
+					//JPC20141120 - Since ios_base:end is one character beyond actual strlen, need (end-1).
+					offset = offset % (end-1);
+					cout << "SEEK new offset " << offset << endl;
 					bytes->seekp(offset, ios_base::beg);
 					bytes->seekg(offset, ios_base::beg);
 					return offset;
@@ -252,8 +261,10 @@ class iostreamDevice : public DeviceDriver {
 		}
 
 		//rewind is a modification of seek
+		//reset file ptr position to beginning (position 0). SEEK_SET
 		int rewind( int pos ) {
-
+			//seek(-1,0,SEEK_SET);
+			return 0;
 		}
 
 		/*
@@ -263,10 +274,11 @@ class iostreamDevice : public DeviceDriver {
 		//*/
 };
 
+//JPC20141120 - Changed cout statement.
 //cout messes up output, so wrote my own function
 void myPrint(char* buf, int size)
 {
-	cout << "============= ";
+	cout << "myPrint: ";
 	for(int i = 0; i < size; i++)
 	{
 		cout << buf[i];
@@ -277,7 +289,7 @@ void myPrint(char* buf, int size)
 int main() {
 
 	char buf[50];
-	char buf2[] = "hello there my friend";	
+	char buf2[] = "hello there my friend";//len 21	
 	char buf3[1024];
 
 	string str; 
@@ -294,8 +306,8 @@ int main() {
 	//create ios device     
  	stringstream SSstream;   
 	iostreamDevice ios = iostreamDevice(&SSstream);
-	int iosFD = ios.open(ios.driverName.c_str(), O_RDWR);  
-	//int iosFD = ios.open("iostreamDevice", O_RDWR);  //does not work !!! does open need to be rewritten?
+	//int iosFD = ios.open(ios.driverName.c_str(), O_RDWR);  
+	int iosFD = ios.open("iostreamDevice1", O_RDWR);
 
 	/*//test read and write
 	cout << "amount write: " << i.write(0,buf2,50) << endl;
@@ -339,6 +351,7 @@ int main() {
 	//*/
 
 	///* 
+	cout << "Input some string to write to device (CTR-D to stop): ";
  	while (getline(cin, str)) // Reads line into str
 	{ 
 		//write str into stream
@@ -346,20 +359,22 @@ int main() {
  	}
 
 	//read 100 characters from ios device into buf3, then print buf3
+	ios.seek(iosFD,0,SEEK_SET);
 	ios.read(iosFD,buf3,100);
 	myPrint(buf3,100);
-   //*/
+    //*/
 
 	//code below breaks when writing into ios device from buf2 !!! when using prevoius code lines 340 - 348
 	//this works if previous code lines 340 - 348 is commented out
+	//JPC20141120 - Seems to work now.
 
 	//write buf2 to ios device twice
-	ios.write(iosFD,buf2,50);
-	ios.write(iosFD,buf2,50);
+	ios.write(iosFD,buf2,25);
+	ios.write(iosFD,buf2,25);
 	
 	//seek 5 from beginning then seek 5 from current position
 	ios.seek(iosFD,5,SEEK_SET);
-	ios.seek(iosFD,5,SEEK_CUR);
+	ios.seek(iosFD,1024,SEEK_CUR);
 
 	//read 100 characters from ios device into buf3, then print buf3
 	ios.read(iosFD,buf3,100);
