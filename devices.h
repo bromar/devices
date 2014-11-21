@@ -23,13 +23,13 @@
 
 using namespace std;
 
-class DeviceDriver;
+class Device;
 
 vector<Inode> ilist;
-vector<DeviceDriver*> drivers;
+vector<Device*> drivers;
 
 namespace devices {
-	class DeviceDriver: public Monitor {
+	class Device: public Monitor {
 		public:
 			Condition ok2read;
 			Condition ok2write;
@@ -39,16 +39,18 @@ namespace devices {
 			int deviceNumber;
 			string driverName;
 
-		DeviceDriver(string driverName)
+		Device(string driverName)
 			:Monitor(),ok2read(this),
 			ok2write(this),deviceNumber(drivers.size()),
 			driverName( driverName )
 			{}
 
-		~DeviceDriver() {
+		~Device() {
 			--inode->openCount;
 		}
 
+		virtual int open() {}
+		virtual int close() {}
 		virtual int read() {}
 		virtual int write() {}
 		virtual int seek() {}
@@ -58,10 +60,13 @@ namespace devices {
 		virtual void offline() {}
 		virtual void fireup() {}
 		virtual void suspend() {}
+		virtual void shutdown() {}
+		virtual void initialize() {}
+		virtual void finalize() {}
 
 	};
 
-	class iostreamDevice : DeviceDriver {
+	class streamDevice : Device {
 
 		public: 
 			int inodeCount;
@@ -69,32 +74,46 @@ namespace devices {
 		
 			iostream* bytes;
 
-			iostreamDevice( iostream* io )
-				: bytes(io), DeviceDriver("iostreamDevice")
+			streamDevice( iostream* io )
+				: bytes(io), Device("iostreamDevice")
 			{}
 
 			~iostreamDevice() {}
 
 			int open( const char* pathname, int flags) {}
 
-			int close( int fd) {}
+			int close() {}
 
-			int read( int fd, void* buf, size_t count) {}
+			int read(void* buf, size_t count) {}
 
-			int write( int fd, void* buf, size_t count) {}
+			int write(void* buf, size_t count) {}
 
-			int seek( int fd, off_t offset, int whence) {}
+			int seek(off_t offset, int whence) {}
 
-			int rewind( int pos ) {}
+			int rewind(int pos) {}
 
-			/*
-			int ioctl(  ) {
-	
-			}
-			//*/
+		 	void online() {}
+
+		 	void offline() {}
+
+		 	void fireup() {}
+
+			void suspend() {}
+
+			void shutdown() {}
+
+			void initialize() {}
+
+			void finalize() {}
+
+			static void read_occured() {}
+
+			static void write_occured() {}
+
+			int ioctl() {}
 	};
 	
-	class stringstreamDevice : DeviceDriver {
+	class stringstreamDevice : Device {
 		public:
 			int inodeCount;
 			int openCount;
@@ -107,20 +126,35 @@ namespace devices {
 		
 			int open(const char*, int) {}
 		
-			int close(int) {}
+			int close() {}
 		
-			int read(int, void*, size_t) {}
+			int read(void*, size_t) {}
 	
-			int write( int, void*, size_t) {}
+			int write( void*, size_t) {}
 	
-			int seek(int, off_t, int) {}
+			int seek(off_t, int) {}
 	
 			int rewind(int) {}
+
+			void online() {}
+
+		 	void offline() {}
+
+		 	void fireup() {}
+
+			void suspend() {}
+
+			void shutdown() {}
+
+			void initialize() {}
+
+			void finalize() {}
+
+			static void read_occured() {}
+
+			static void write_occured() {}
 	
-			/*
-			int ioctl( ) {
-			}
-			//*/
+			int ioctl() {}
 	};
 }
 
