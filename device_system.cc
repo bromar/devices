@@ -7,6 +7,7 @@
 #include <strstream>
 #include <cstring>
 #include <cstdio>
+#include <fstream>
 
 #include <sys/types.h>
 #include <sys/stat.h>
