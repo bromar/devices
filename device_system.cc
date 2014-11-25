@@ -361,6 +361,8 @@ class stringstreamDevice : Device {
 	public:
 	int inodeCount = 0;
 	int openCount = 0;
+	mode_t mode;
+	size_t offset = 0;
 	stringstream* bytes;
 	stringstreamDevice( stringstream* ss )
 	: bytes(ss), Device("stringstreamDevice")
@@ -391,11 +393,23 @@ class stringstreamDevice : Device {
 		}
 		++inodeCount;
 		++openCount;
+		driverName = pathname;
 		return deviceNumber;
 	}
 	int close( int fd) {
 		cout << "Closing device " << driverName << endl;
-		--openCount;
+		auto i = begin(drivers);
+		while (i != end(drivers)) {
+		    if ((*i)->deviceNumber == this->deviceNumber) {
+		        // push current deviceNumber onto available
+				freedDeviceNumbers.push_back((*i)->deviceNumber);
+		        i = drivers.erase(i);
+		        return 0;
+		    }
+		    else {
+		        i++;
+		    }
+		}
 		cout << "Device " << driverName << " closed\n";
 		return 0;
 	}
@@ -422,29 +436,89 @@ class stringstreamDevice : Device {
 		}
 		return i;
 	}
-	int seek( int fd, off_t offset, int whence) {
-		if( whence == SEEK_SET )
+	int seek(off_t offsetIn, int whence) {
+		//set position to passed in position
+		if(whence == SEEK_SET)
 		{
-			bytes->seekg(offset,ios_base::beg);
+			//get end position to save in our offset variable
+			off_t save = bytes->tellp();
+			bytes->seekp(0, ios_base::end);
+			off_t end = bytes->tellp();
+			bytes->seekp(save);
+				//save position in our offset variable
+			offset = offsetIn;			
+			
+			if(offset >  end)
+			{
+				doPadding(save,offset);
+			}
+
+			//set positions
+			bytes->seekp(offsetIn,ios_base::beg);//move put pointer - write
+			bytes->seekg(offsetIn,ios_base::beg);//move get pointer - read
+		}
+			//set position to current position + passed in position
+		else if(whence == SEEK_CUR)
+		{
+			//get end position to save in our offset variable
+			off_t save = bytes->tellp();
+			bytes->seekp(0, ios_base::end);
+			off_t end = bytes->tellp();
+			bytes->seekp(save);
+				//save position in our offset variable
+			offset += offsetIn;			
+			
+			if(offset >  end)
+			{
+				doPadding(save,offset);
+			}
+			
+			//set positions 
+			bytes->seekp(offset, ios_base::beg);
+			bytes->seekg(offset, ios_base::beg);
+				cout << "SEEK read position " << bytes->tellg() << endl;
+			cout << "SEEK write position " << bytes->tellp() << endl;
+		}
+
+		else if(whence == SEEK_END)
+		{
+			///*			
+				//get end position to save in our offset variable
+			off_t save = bytes->tellp();
+			bytes->seekp(0, ios_base::end);
+			off_t end = bytes->tellp();
+			bytes->seekp(save);
+				//save position in our offset variable
+			offset = end + offsetIn;
+				if(offset > end)
+			{
+				doPadding(save,offset);
+			}
+				//set positions
 			bytes->seekp(offset,ios_base::beg);
-		}
-		else if( whence == SEEK_CUR )
-		{
-			bytes->seekg(offset,ios_base::cur);
-			bytes->seekp(offset,ios_base::cur);
-		}
-		else if( whence == SEEK_END )
-		{
-			bytes->seekg(offset,ios_base::end);
-			bytes->seekp(offset,ios_base::end);
-		}
+			bytes->seekg(offset,ios_base::beg);
+			//*/
+		} 
 		return offset;
+		
 	}
+
 	int rewind( int pos ) {
-		seek( deviceNumber, 0, SEEK_CUR);
+		seek( 0, SEEK_CUR);
 	}
+
+	//helper function doPadding only works for write, not read
+	void doPadding(off_t start, off_t end)
+	{
+		for(int i = start; i < end; i++ )	
+		{
+			cout << "Padding: " << bytes->tellp() << endl;
+			bytes->put('\0');
+		}
+	}
+
 	/*
-	int ioctl( ) {
+	int ioctl(  ) {
 	}
 	//*/
 };
@@ -600,7 +674,7 @@ int main() {
 	//*/	
 
 
-	/*segfault 
+	//*segfault 
 
 	// Stringstream test harness
 	stringstream* ss = new stringstream;
