@@ -15,6 +15,13 @@
 #include <sstream>
 #include <errno.h>
 
+//Interrupts and IOCTL header
+#ifdef __linux
+#include <linux/ioctl.h>
+#elif __APPLE__
+#include <sys/ioctl.h>
+#endif
+
 using namespace std;
 
 /*
@@ -125,17 +132,22 @@ class Device: public Monitor {
 		}
 	}
 	
-	virtual int open() {}
-	virtual int close() {}
+	/*virtual int open() {}
 	virtual int read() {}
 	virtual int write() {}
 	virtual int seek() {}
-	virtual int rewind() {}
-	virtual int ioctl() {}
+	virtual int rewind() {}*/
+	virtual int ioctl() {return -1;}
+	virtual void open() {}
+	virtual void read() {}
+	virtual void write() {}
+	virtual void seek() {}
+	virtual void rewind() {}
 	virtual void online() {}
 	virtual void offline() {}
 	virtual void fireup() {}
 	virtual void suspend() {}
+
 	virtual void shutdown() {}
 	virtual void initialize() {}
 	virtual void finalize() {}
@@ -168,6 +180,13 @@ class streamDevice : Device {
 		}
 
 		int open(const char* pathname, int flags) {
+			auto i = begin(drivers);
+			while (i != end(drivers)) {
+			    if ((*i)->driverName == pathname) {
+			        return -1;
+			    }
+			    i++;
+			}
 			readable = !(flags & 0x01);
 			writeable = (flags & 0x01) | (flags & 0x02);
 			driverName = pathname;
@@ -177,21 +196,25 @@ class streamDevice : Device {
 
 		// return non-zero on error
 		int close() {
-			//openCount = (openCount > 0) ? openCount - 1 : 0;
-			// remove device from vector of drivers
-			auto i = begin(drivers);
-			while (i != end(drivers)) {
-			    if ((*i)->deviceNumber == this->deviceNumber) {
-			        // push current deviceNumber onto available
-					freedDeviceNumbers.push_back((*i)->deviceNumber);
-			        i = drivers.erase(i);
-			        return 0;
-			    }
-			    else {
-			        i++;
-			    }
+			openCount = (openCount > 0) ? openCount - 1 : 0;
+			if (openCount==0)
+			{
+				// remove device from vector of drivers
+				auto i = begin(drivers);
+				while (i != end(drivers)) {
+				    if ((*i)->deviceNumber == this->deviceNumber) {
+				        // push current deviceNumber onto available
+						freedDeviceNumbers.push_back((*i)->deviceNumber);
+				        i = drivers.erase(i);
+				        return 0;
+				    }
+				    else {
+				        i++;
+				    }
+				}
+				return 1;
 			}
-			return 1;
+			return 0;
 		}
 
 		int read(void* buf, size_t count) {
@@ -351,9 +374,29 @@ class streamDevice : Device {
 
 		static void write_occured() {return;}
 
-		int ioctl() {return 0;}
-
-
+		/*
+		Commands:
+			1. HARDRESET - reset open count to one for device. used to close device if error.
+			2. FIONREAD - get # bytes to read
+ 			3. FIONBIO - set/clear non-blocking i/o
+			4. FIOASYNC - set/clear async i/o
+			5. FIOSETOWN - set owner. ?
+			6. FIOGETOWN - get owner. ?
+			7. TIOCSTOP - stop output
+			8. TIOCSTART - start output
+			...
+			n. ???
+		*/
+		int ioctl(unsigned int cmd, unsigned long arg)
+		{
+			//defined in sys/ioctl.h
+			//_IO(1,2);//io macro
+			switch(cmd)
+			{
+				default: break;
+			}
+			return -1;
+		}
 };
 
 //Brian's code
@@ -504,7 +547,7 @@ class stringstreamDevice : Device {
 	}
 
 	int rewind( int pos ) {
-		seek( 0, SEEK_CUR);
+		return seek(0, SEEK_CUR);
 	}
 
 	//helper function doPadding only works for write, not read
