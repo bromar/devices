@@ -430,7 +430,6 @@ public:
 			for(i = 0; i < count; i++)
 			{
 				//return if eof encountered with amount read
-				assert(buffer[i]);
 				if(!stream)
 				{
 					stream->seekg(offsetIn);
@@ -735,7 +734,6 @@ public:
 		{
 			//return if eof encountered with amount read
 			cout << "i " << i << endl;
-			assert(buffer[i]!=NULL);
 			if(!stream)
 			{
 				stream->seekg(offset);
