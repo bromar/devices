@@ -27,6 +27,8 @@
 
 #include <sstream>
 #include <errno.h>
+#include <assert.h>
+
 
 //Interrupts and IOCTL header
 #ifdef __linux
@@ -43,6 +45,15 @@ using namespace std;
 #define ODD_RDONLY 	00
 #define ODD_WRONLY 	01
 #define ODD_RDWR 	02
+
+/*
+	IOCTL Device Macros
+*/
+#define ODD_HARDRESET 001
+#define ODD_FIONBIO 002
+#define ODD_FIONREAD 003
+#define	ODD_FIONWRITE 004
+
 
 class Device;
 
@@ -191,6 +202,15 @@ vector<Device*> drivers;
 // deviceNumbers
 vector<int> freedDeviceNumbers;
 
+
+
+// Here is the section about interrupt handlers
+//iDevice<char> stuff(cin);
+
+void readCompletionHandler(int deviceIndex);
+void writeCompletionHandler(int deviceIndex);
+
+
 class Device: public Monitor {
 	public:
 		int deviceNumber;
@@ -201,6 +221,8 @@ class Device: public Monitor {
 		int openCount = 0;
 		bool readable;
 		bool writeable;
+		int bytesRead;
+		int bytesWritten;
 
 	// this constructor originally had an initialization of
 	// deviceNumber(drivers.size()) which is not safe. the
@@ -291,7 +313,50 @@ class Device: public Monitor {
 	virtual int write() {}
 	virtual int seek() {}
 	virtual int rewind() {}
-	virtual int ioctl() {}
+	//virtual int ioctl() {}
+	/*
+		Commands:
+			1. HARDRESET - reset open count to one for device. used to close device if error.
+			2. FIONREAD - get # bytes to read
+ 			3. FIONBIO - set/clear non-blocking i/o
+			4. FIOASYNC - set/clear async i/o
+			5. FIOSETOWN - set owner. ?
+			6. FIOGETOWN - get owner. ?
+			7. TIOCSTOP - stop output
+			8. TIOCSTART - start output
+			9. FIONWRITE - bytes written
+			...
+			n. ???
+	*/
+	virtual int ioctl(unsigned int cmd, unsigned long arg)
+	{
+		//defined in sys/ioctl.h
+		//_IO(1,2);//io macro
+		switch(cmd)
+		{
+			case ODD_HARDRESET:
+			openCount = 1;
+			break;
+			case ODD_FIONBIO:
+			if (readable)
+			{
+				readCompletionHandler(deviceNumber);
+			}
+			if (writeable)
+			{
+				writeCompletionHandler(deviceNumber);
+			}
+			break;
+			case ODD_FIONREAD:
+			return bytesRead;
+			break;
+			case ODD_FIONWRITE:
+			return bytesWritten;
+			break;
+			default: break;
+		}
+		return -1;
+	}
 	virtual void online() {}
 	virtual void offline() {}
 	virtual void fireup() {
@@ -310,6 +375,8 @@ class Device: public Monitor {
 		cout << "finalizing " << driverName << endl;
 	}
 	
+	virtual void completeWrite() {}
+	virtual void completeRead() {}
 
 
 };
@@ -330,11 +397,11 @@ class Device: public Monitor {
 template< typename Item >
 class iDevice : public Device {
 
-  istream& stream;
+  istream *stream;
   size_t offsetIn = 0;
   
 public:
-	iDevice( istream& stream )
+	iDevice( istream *stream )
 		: stream(stream), 
 		Device("iDevice")
 	{}
@@ -343,7 +410,7 @@ public:
 	bool readCompleted;
 
 	int input( Item* buffer, int n ) {
-		EXCLUSION
+		/*EXCLUSION
 		int i = 0;
 		for ( ; i != n; ++i ) {
 			if ( !stream ) break;
@@ -353,7 +420,8 @@ public:
 			// only.  Delete it when interrupts are working.
 			while( ! readCompleted ) ok2read.WAIT;
 		}
-		return i;
+		return i;*/
+		read(buffer,n);
 	}
   
   		int read(Item* buffer, size_t count) {
@@ -362,15 +430,15 @@ public:
 			for(i = 0; i < count; i++)
 			{
 				//return if eof encountered with amount read
-				if ( !stream ) break;
-				if(stream.peek() == EOF)
+				assert(buffer[i]);
+				if(!stream)
 				{
-					stream.seekg(offsetIn);
-					stream.clear(); //clear eofbit after reading eof
-					return i;
+					stream->seekg(offsetIn);
+					stream->clear(); //clear eofbit after reading eof
+					return (bytesRead = i);
 				}
-				int tmp = stream.tellg();
-				buffer[i] = stream.get();
+				int tmp = stream->tellg();
+				buffer[i] = stream->get();
 
 				//read character from bytes then store into buffer
 				//cout << "Reading '" << (char)buffer[i] << "' from position tellg() " << tmp
@@ -381,8 +449,9 @@ public:
       			while( ! readCompleted ) ok2read.WAIT;						
 			}
 			//return with amount read
-			stream.seekg(offsetIn);
-			return i;		
+			stream->seekg(offsetIn);
+			//bytesRead = i
+			return (bytesRead = i);		
 		}
 		
 		int seek(off_t newOffset, int whence) {
@@ -391,10 +460,10 @@ public:
 			if(whence == SEEK_SET)
 			{
 				//get end position to save in our offset variable
-				off_t save = stream.tellg();
-				stream.seekg(0, ios_base::end);
-				off_t end = stream.tellg();
-				stream.seekg(save);
+				off_t save = stream->tellg();
+				stream->seekg(0, ios_base::end);
+				off_t end = stream->tellg();
+				stream->seekg(save);
 
 				//save position in our offset variable
 				offsetIn = newOffset;			
@@ -406,17 +475,17 @@ public:
 
 
 				//set positions
-				stream.seekg(offsetIn,ios_base::beg);//move get pointer - read
+				stream->seekg(offsetIn,ios_base::beg);//move get pointer - read
 			}
 
 			//set position to current position + passed in position
 			else if(whence == SEEK_CUR)
 			{
 				//get end position to save in our offset variable
-				off_t save = stream.tellg();
-				stream.seekg(0, ios_base::end);
-				off_t end = stream.tellg();
-				stream.seekg(save);
+				off_t save = stream->tellg();
+				stream->seekg(0, ios_base::end);
+				off_t end = stream->tellg();
+				stream->seekg(save);
 
 				//save position in our offset variable
 				offsetIn += newOffset;			
@@ -427,7 +496,7 @@ public:
 				}
 				
 				//set positions 
-				stream.seekg(offsetIn, ios_base::beg);
+				stream->seekg(offsetIn, ios_base::beg);
 			}
 	
 			else if(whence == SEEK_END)
@@ -435,10 +504,10 @@ public:
 				///*			
 
 				//get end position to save in our offset variable
-				off_t save = stream.tellg();
-				stream.seekg(0, ios_base::end);
-				off_t end = stream.tellg();
-				stream.seekg(save);
+				off_t save = stream->tellg();
+				stream->seekg(0, ios_base::end);
+				off_t end = stream->tellg();
+				stream->seekg(save);
 
 				//save position in our offset variable
 				offsetIn = end + newOffset;
@@ -449,7 +518,7 @@ public:
 				}
 
 				//set positions
-				stream.seekg(offsetIn,ios_base::beg);
+				stream->seekg(offsetIn,ios_base::beg);
 				//
 			} 
 			return offsetIn;
@@ -477,11 +546,11 @@ public:
 template< typename Item >
 class oDevice : public Device {
 
-  	ostream& stream;
+  	ostream *stream;
     size_t offsetOut = 0;
 
 public:		
-	oDevice( ostream& stream )
+	oDevice( ostream *stream )
 		: stream(stream), Device("oDevice")
 	{}
 
@@ -489,7 +558,7 @@ public:
 	bool writeCompleted;
 
 	int output( Item* buffer, int n ) {
-		EXCLUSION
+		/*EXCLUSION
 		int i = 0;
 		for ( ; i != n; ++i ) {
 			if ( !stream ) break;
@@ -499,7 +568,8 @@ public:
 			// only.  Delete it when interrupts are working.
 			while( ! writeCompleted ) ok2write.WAIT;
 		}
-		return i;
+		return (bytesWritten=i);*/
+		write(buffer,n);
 	}
   
   		int write(Item* buffer, size_t count) {
@@ -508,18 +578,18 @@ public:
 			for(i = 0; i < count; i++)
 			{
 				//write character from buffer into bytes
-				//cout << "Writing '" << (char)buffer[i] << "' at position " << stream.tellp()
+				//cout << "Writing '" << (char)buffer[i] << "' at position " << stream->tellp()
 				//	<< " and position offset " << offsetOut << " of device '" << this->driverName << "'" << endl;
 				if ( !stream ) break;
 				writeCompleted = false;
       			writeCompleted = true;
-				stream.put(buffer[i]);
+				stream->put(buffer[i]);
 				offsetOut++;
 				while( ! writeCompleted ) ok2write.WAIT;
 			}
 			//return with amount written
-			stream.seekp(offsetOut);
-			return i;
+			stream->seekp(offsetOut);
+			return (bytesWritten=i);
 		}
 		
 
@@ -529,10 +599,10 @@ public:
 			if(whence == SEEK_SET)
 			{
 				//get end position to save in our offset variable
-				off_t save = stream.tellp();
-				stream.seekp(0, ios_base::end);
-				off_t end = stream.tellp();
-				stream.seekp(save);
+				off_t save = stream->tellp();
+				stream->seekp(0, ios_base::end);
+				off_t end = stream->tellp();
+				stream->seekp(save);
 
 				//save position in our offset variable
 				offsetOut = newOffset;			
@@ -544,17 +614,17 @@ public:
 
 
 				//set positions
-				stream.seekp(offsetOut,ios_base::beg);//move put pointer - write
+				stream->seekp(offsetOut,ios_base::beg);//move put pointer - write
 			}
 
 			//set position to current position + passed in position
 			else if(whence == SEEK_CUR)
 			{
 				//get end position to save in our offset variable
-				off_t save = stream.tellp();
-				stream.seekp(0, ios_base::end);
-				off_t end = stream.tellp();
-				stream.seekp(save);
+				off_t save = stream->tellp();
+				stream->seekp(0, ios_base::end);
+				off_t end = stream->tellp();
+				stream->seekp(save);
 
 				//save position in our offset variable
 				offsetOut += newOffset;			
@@ -565,9 +635,9 @@ public:
 				}
 				
 				//set positions 
-				stream.seekp(offsetOut, ios_base::beg);
+				stream->seekp(offsetOut, ios_base::beg);
 				
-				cout << "SEEK write position " << stream.tellp() << endl;
+				cout << "SEEK write position " << stream->tellp() << endl;
 			}
 	
 			else if(whence == SEEK_END)
@@ -575,10 +645,10 @@ public:
 				///*			
 
 				//get end position to save in our offset variable
-				off_t save = stream.tellp();
-				stream.seekp(0, ios_base::end);
-				off_t end = stream.tellp();
-				stream.seekp(save);
+				off_t save = stream->tellp();
+				stream->seekp(0, ios_base::end);
+				off_t end = stream->tellp();
+				stream->seekp(save);
 
 				//save position in our offset variable
 				offsetOut = end + newOffset;
@@ -589,7 +659,7 @@ public:
 				}
 
 				//set positions
-				stream.seekp(offsetOut,ios_base::beg);
+				stream->seekp(offsetOut,ios_base::beg);
 				//
 			} 
 			return offsetOut;
@@ -609,8 +679,8 @@ public:
 		{
 			for(int i = start; i < end; i++ )	
 			{
-				cout << "Padding: " << stream.tellp() << endl;
-				stream.put('\0');
+				cout << "Padding: " << stream->tellp() << endl;
+				stream->put('\0');
 			}
 		}
 
@@ -629,32 +699,33 @@ public:
 template< typename Item >
 class ioDevice : public Device{
 
-  iostream& stream;
+  iostream *stream;
   size_t offset = 0;
 
 public:
 
-	ioDevice( iostream& s )  
+	ioDevice( iostream *s )  
 		:stream(s),
 		 Device("ioDevice")
 		 
-	{}	
+	{}
 	
 	CONDITION ok2read;
 	bool readCompleted;
 
 	int input( Item* buffer, int n ) {
-		EXCLUSION
+		read(buffer,n);
+		/*EXCLUSION
 		int i = 0;
 		for ( ; i != n; ++i ) {
 			if ( !stream ) break;
-			stream >> buffer[i];                        // read a byte
+			stream >> buffer[i]; // read a byte
 			readCompleted = false;
 			readCompleted = true;  // This line is for testing purposes
 			// only.  Delete it when interrupts are working.
 			while( ! readCompleted ) ok2read.WAIT;
 		}
-		return i;
+		return i;*/
 	}
   
 	int read(Item* buffer, size_t count) {
@@ -663,15 +734,16 @@ public:
 		for(i = 0; i < count; i++)
 		{
 			//return if eof encountered with amount read
-			//if ( !stream ) break;
-			if(stream.peek() == EOF || !stream)
+			cout << "i " << i << endl;
+			assert(buffer[i]!=NULL);
+			if(!stream)
 			{
-				stream.seekg(offset);
-				stream.clear(); //clear eofbit after reading eof
-				return i;
+				stream->seekg(offset);
+				stream->clear(); //clear eofbit after reading eof
+				return (bytesRead=i);
 			}
-			int tmp = stream.tellg();
-			buffer[i] = stream.get();
+			int tmp = stream->tellg();
+			buffer[i] = stream->get();
 
 			//read character from bytes then store into buffer
 			cout << "Reading '" << buffer[i] << "' from position tellg() " << tmp
@@ -679,12 +751,12 @@ public:
 			offset++; 
 			readCompleted = false;
   			readCompleted = true;
-  			while( ! readCompleted ) ok2read.WAIT;						
+  			while( ! readCompleted ) ok2read.WAIT;
 		}
 		//return with amount read
-		stream.seekg(offset);
-		stream.seekp(offset);
-		return i;		
+		stream->seekg(offset);
+		stream->seekp(offset);
+		return (bytesRead=i);
 	}
 
 		
@@ -701,7 +773,8 @@ public:
 	bool writeCompleted;
 
 	int output( Item* buffer, int n ) {
-		EXCLUSION
+		write(buffer,n);
+		/*EXCLUSION
 		int i = 0;
 		for ( ; i != n; ++i ) {
 			if ( !stream ) break;
@@ -711,7 +784,7 @@ public:
 			// only.  Delete it when interrupts are working.
 			while( ! writeCompleted ) ok2write.WAIT;
 		}
-		return i;
+		return i;*/
 	}
   
 	int write(Item* buffer, size_t count) {
@@ -719,20 +792,28 @@ public:
 		int i = 0;
 		for(i = 0; i < count; i++)
 		{
+			//cout << "!sizeof " << sizeof(buffer) * sizeof(Item) << endl;
+			if (!stream)
+			{
+				cout << "!sizeof " << sizeof(buffer) * sizeof(Item) << endl;
+				stream->seekp(0,ios_base::end);
+				stream->seekg(0,ios_base::end);
+				stream->clear(); //clear eofbit after reading eof
+				return (bytesWritten=i);
+			}
 			//write character from buffer into bytes
-			cout << "Writing '" << buffer[i] << "' at position " << stream.tellp()
+			cout << "Writing '" << buffer[i] << "' at position " << stream->tellp()
 				<< " and position offset " << offset << " of device '" << this->driverName << "'" << endl;
-			if ( !stream ) break;
 			writeCompleted = false;
   			writeCompleted = true;
-			stream.put(buffer[i]);
+			stream->put(buffer[i]);
 			offset++;
 			while( ! writeCompleted ) ok2write.WAIT;
 		}
 		//return with amount written
-		stream.seekp(offset);
-		stream.seekg(offset);
-		return i;
+		stream->seekp(offset);
+		stream->seekg(offset);
+		return (bytesWritten=i);
 	}
 	
 	void completeWrite() {
@@ -747,36 +828,40 @@ public:
 		//set position to passed in position
 		if(whence == SEEK_SET)
 		{
+			cout << "0SEEK read position " << stream->tellg() << endl;
+			cout << "0SEEK write position " << stream->tellp() << endl;
+
 			//get end position to save in our offset variable
-			off_t save = stream.tellp();
-			stream.seekp(0, ios_base::end);
-			off_t end = stream.tellp();
-			stream.seekp(save);
+			off_t save = stream->tellp();
+			stream->seekp(0, ios_base::end);
+			off_t end = stream->tellp();
+			stream->seekp(save);
 
 			//save position in our offset variable
-			offset = newOffset;			
+			offset = newOffset;
 			
-			if(offset >  end)
+			if(offset > (end-1))
 			{
+				cout << "doPadding\n";
 				doPadding(save,offset);
 			}
 
 			//set positions
-			stream.seekp(offset,ios_base::beg);//move put pointer - write
-			stream.seekg(offset,ios_base::beg);//move get pointer - read
+			stream->seekp(offset,ios_base::beg);//move put pointer - write
+			stream->seekg(offset,ios_base::beg);//move get pointer - read
 			
-			cout << "SEEK read position " << stream.tellg() << endl;
-			cout << "SEEK write position " << stream.tellp() << endl;
+			cout << "1SEEK read position " << stream->tellg() << endl;
+			cout << "1SEEK write position " << stream->tellp() << endl;
 		}
 
 		//set position to current position + passed in position
 		else if(whence == SEEK_CUR)
 		{
 			//get end position to save in our offset variable
-			off_t save = stream.tellp();
-			stream.seekp(0, ios_base::end);
-			off_t end = stream.tellp();
-			stream.seekp(save);
+			off_t save = stream->tellp();
+			stream->seekp(0, ios_base::end);
+			off_t end = stream->tellp();
+			stream->seekp(save);
 
 			//save position in our offset variable
 			offset += newOffset;			
@@ -787,11 +872,11 @@ public:
 			}
 			
 			//set positions 
-			stream.seekp(offset, ios_base::beg);
-			stream.seekg(offset, ios_base::beg);
+			stream->seekp(offset, ios_base::beg);
+			stream->seekg(offset, ios_base::beg);
 
-			cout << "SEEK read position " << stream.tellg() << endl;
-			cout << "SEEK write position " << stream.tellp() << endl;
+			cout << "SEEK read position " << stream->tellg() << endl;
+			cout << "SEEK write position " << stream->tellp() << endl;
 		}
 
 		else if(whence == SEEK_END)
@@ -799,10 +884,10 @@ public:
 			///*			
 
 			//get end position to save in our offset variable
-			off_t save = stream.tellp();
-			stream.seekp(0, ios_base::end);
-			off_t end = stream.tellp();
-			stream.seekp(save);
+			off_t save = stream->tellp();
+			stream->seekp(0, ios_base::end);
+			off_t end = stream->tellp();
+			stream->seekp(save);
 
 			//save position in our offset variable
 			offset = end + newOffset;
@@ -813,12 +898,12 @@ public:
 			}
 
 			//set positions
-			stream.seekp(offset,ios_base::beg);
-			stream.seekg(offset,ios_base::beg);
+			stream->seekp(offset,ios_base::beg);
+			stream->seekg(offset,ios_base::beg);
 			//*/
 			
-			cout << "SEEK read position " << stream.tellg() << endl;
-			cout << "SEEK write position " << stream.tellp() << endl;
+			cout << "SEEK read position " << stream->tellg() << endl;
+			cout << "SEEK write position " << stream->tellp() << endl;
 		} 
 		return offset;
 		
@@ -836,8 +921,8 @@ public:
 	{
 		for(int i = start; i < end; i++ )	
 		{
-			cout << "Padding: " << stream.tellp() << endl;
-			stream.put('\0');
+			cout << "Padding: " << stream->tellp() << endl;
+			stream->put('\0');
 		}
 	}
 
@@ -845,25 +930,18 @@ public:
 
 
 
-// Here is the section about interrupt handlers
-//iDevice<char> stuff(cin);
 
-vector<ioDevice<char>*> v;  
-
-void readCompletionHandler() {  // When IO-completion interrupts
+void readCompletionHandler(int deviceIndex) {  // When IO-completion interrupts
   // are available, this handler should be installed to be directly 
   // invoked by the hardawre's interrupt mechanism.
-  v[0]->completeRead();
+  drivers[deviceIndex]->completeRead();
 }
 
-void writeCompletionHandler() {  // When IO-completion interrupts
+void writeCompletionHandler(int deviceIndex) {  // When IO-completion interrupts
   // are available, this handler should be installed to be directly 
   // invoked by the hardawre's interrupt mechanism.
-  v[0]->completeWrite();
+  drivers[deviceIndex]->completeWrite();
 }
-
-
-
 
 
 //==================================================================
@@ -905,7 +983,7 @@ void myPrint(char* buf, int size)
 	{
 		cout << buf[i];
 	}
-	cout << endl;
+	cout << "." << endl;
 }
 
 
@@ -916,7 +994,7 @@ int main() {
 	char bufferIn[50];
 	char bufferOut[50];
 
-	char buf1[] = "hello test this";
+	char buf1[] = "hello test this";//15
 	char buf2[20];
 	
 	cout << "tellg of cin: " << cin.tellg() << endl;
@@ -941,7 +1019,7 @@ int main() {
 	iostream s2(&sb2);
 	stringstream ss;
 	ss << "hello this is test";
-	ioDevice<char> inOut(ss);
+	ioDevice<char> inOut(&ss);
 	//*/
 	
 	cout << "whatwhatwhatwhatwhatwhatwhatwhatwhat" << endl;
@@ -952,19 +1030,21 @@ int main() {
 	
 	inOut.seek(0,SEEK_SET);
 	
-	cout <<"input: "<< inOut.input(buf1,20) << endl;
-	cout <<"output: "<< inOut.output(buf2,20) << endl;
+	// Works with -> input: << , output: >>
+	cout <<"input: "<< inOut.read(buf1,15) << endl;//Must do Bounds checking!
+	//out <<"output: "<< inOut.write(buf2,15) << endl;
 	
 	myPrint(buf2,20);
 	
 	inOut.seek(0,SEEK_SET);
 	cout << "pleasepleasepleasepleasepleasepleasepleasepleaseplease" << endl;
-	cout <<"read: "<< inOut.read(buf1,20) << endl;
-	cout <<"write: "<< inOut.write(buf2,20) << endl;
+
+	// Works with -> input: >> , output: >>
+	myPrint(buf1,15);
+	cout <<"write: "<< inOut.write(buf2,15) << endl;
+	cout <<"read: "<< inOut.read(buf1,15) << endl;//??
 	
 	myPrint(buf2,20);
-	
-
 
 	
  	return 0;
