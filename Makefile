@@ -21,7 +21,7 @@ endif
 CC = g++
 
 ## Compiler flags
-FLAGS = -std=c++11 -stdlib=libc++
+FLAGS = -std=c++11 -pthread
 
 ## Global header files
 INCLUDE =
