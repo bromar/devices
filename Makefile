@@ -24,7 +24,7 @@ CC = g++
 FLAGS = -std=c++11 -stdlib=libc++
 
 ## Global header files
-INCLUDE = devices.h
+INCLUDE =
 
 ## Object files and executables
 MAIN_OUT = devices
@@ -32,14 +32,18 @@ MAIN_OUT = devices
 ## Requirements for each command
 MAIN_REQS =
 
-## Targets to compile for each command
-MAIN_TARGETS = device_system.cc
+## Target source to compile for each command
+MAIN_TARGETS = main.cpp devices.cpp
+
+## Objects from source
+MAIN_OBJS = main.o devices.o
 
 all:
-		$(CC) $(FLAGS) -o $(MAIN_OUT).out $(MAIN_TARGETS) $(LIBS)
+		$(CC) $(FLAGS) -c $(MAIN_TARGETS)
+		$(CC) $(FLAGS) -o $(MAIN_OUT) $(MAIN_OBJS)
 
 test:
-		./$(MAIN_OUT).out
+		./$(MAIN_OUT)
 
 print:
 		a2ps --font-size=8pts -E C++ --line-numbers=1 -M letter $(INCLUDE) $(MAIN_TARGETS) Makefile -o printout.ps
