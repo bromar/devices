@@ -27,7 +27,7 @@ FLAGS = -std=c++11 -stdlib=libc++
 INCLUDE =
 
 ## Object files and executables
-MAIN_OUT = devices
+MAIN_OUT = devices.out
 
 ## Requirements for each command
 MAIN_REQS =
