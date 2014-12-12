@@ -9,7 +9,6 @@
 */
 
 
-
 #ifndef DEVICES_H
 #define DEVICES_H 
 
@@ -245,6 +244,7 @@ class iDevice : public Device {
 	
 	istream *stream;
 	stringstream sstream;
+	fstream* fstreamy;
 	int offsetIn = 0;
   
 	public:
@@ -262,6 +262,16 @@ class iDevice : public Device {
 	{
 		offsetIn = 0;
 		stream = &sstream;
+		//static_cast<istream*>(&sstream);
+		stream->seekg(offsetIn,ios_base::beg);
+	}
+
+	iDevice( fstream* s )
+		: fstreamy(s), 
+		Device("iDevice")
+	{
+		offsetIn = 0;
+		stream = fstreamy;
 		//static_cast<istream*>(&sstream);
 		stream->seekg(offsetIn,ios_base::beg);
 	}
@@ -384,7 +394,8 @@ class oDevice : public Device {
 
   	ostream *stream;
 	stringstream sstream;
-    int offsetOut = 0;
+	fstream* fstreamy;
+   int offsetOut = 0;
 
 	//helper function doPadding only works for write, not read
 	void doPadding(off_t start, off_t end)
@@ -411,6 +422,15 @@ public:
 	{
 		offsetOut = 0;
 		stream = &sstream;
+		stream->seekp(offsetOut,ios_base::beg);
+	}
+
+	oDevice( fstream* s )
+		: fstreamy(s), 
+		Device("oDevice")
+	{
+		offsetOut = 0;
+		stream = fstreamy;
 		stream->seekp(offsetOut,ios_base::beg);
 	}
 
@@ -523,6 +543,7 @@ class ioDevice : public iDevice<Item>, public oDevice<Item> {
 
   iostream *stream;
   stringstream sstream;
+  fstream* fstreamy;
   int offset = 0;
 
 public:
@@ -540,6 +561,14 @@ public:
 	{
 		offset = 0;
 		stream = &sstream;
+	}
+
+	ioDevice( fstream* s )  
+		:fstreamy(s), 
+		 iDevice<Item>(s), oDevice<Item>(s)
+	{
+		offset = 0;
+		stream = fstreamy;
 	}
 
 
