@@ -1,4 +1,5 @@
 #include "devices.h"
+#include <map>
 
 //=====
 //Globals
@@ -14,7 +15,8 @@ sigset_t InterruptSystem::alloff;
 InterruptSystem interrupts;// singleton instance.
 
 vector<Inode> ilist;
-vector<Device*> drivers;
+//vector<Device*> drivers;
+map<string,Device*> drivers;
 
 vector<int> freedDeviceNumbers;
 
@@ -89,7 +91,8 @@ Device::Device(string dn)
 		{
 			deviceNumber = drivers.size();
 		}
-		drivers.push_back(this);
+		drivers.insert(pair<string,Device*>(dn,this));
+		//drivers.push_back(this);
 		//inode->openCount++;
 	}
 
@@ -100,7 +103,7 @@ Device::~Device() {
 	// look into remove_if
 	auto i = begin(drivers);
 	while (i != end(drivers)) {
-	    if ((*i)->deviceNumber == deviceNumber) {
+	    if (i->second->deviceNumber == deviceNumber) {
 	        i = drivers.erase(i);
 	    }
 	    else {
@@ -109,6 +112,7 @@ Device::~Device() {
 	}
 }
 
+//!!!!! Needs to search open file table!!!!!!!!
 int Device::open(const char* pathname, int flags) {
 	//Need to check for already existing pathname in Device
 	//constructor! Not here.
@@ -123,7 +127,7 @@ int Device::open(const char* pathname, int flags) {
 	//    }
 	//    i++;
 	//}
-
+	drivers.insert(pair<string,Device*>(pathname,this));
 	readable = !(flags & 0x01);
 	writeable = (flags & 0x01) | (flags & 0x02);
 	driverName = pathname;
@@ -139,9 +143,9 @@ int Device::close() {
 		// remove device from vector of drivers
 		auto i = begin(drivers);
 		while (i != end(drivers)) {
-		    if ((*i)->deviceNumber == this->deviceNumber) {
+		    if (i->second->deviceNumber == this->deviceNumber) {
 		        // push current deviceNumber onto available
-				freedDeviceNumbers.push_back((*i)->deviceNumber);
+				freedDeviceNumbers.push_back(i->second->deviceNumber);
 		        i = drivers.erase(i);
 		        return 0;
 		    }
@@ -234,13 +238,28 @@ void Device::completeRead() {}
 void readCompletionHandler(int deviceIndex) {  // When IO-completion interrupts
   // are available, this handler should be installed to be directly 
   // invoked by the hardawre's interrupt mechanism.
-  drivers[deviceIndex]->completeRead();
+  //drivers[deviceIndex]->completeRead();
+	getDeviceFd(deviceIndex)->completeRead();
 }
 
 void writeCompletionHandler(int deviceIndex) {  // When IO-completion interrupts
   // are available, this handler should be installed to be directly 
   // invoked by the hardawre's interrupt mechanism.
-  drivers[deviceIndex]->completeWrite();
+  getDeviceFd(deviceIndex)->completeWrite();
+}
+
+
+// Utility function
+Device * getDeviceFd(int fd) {
+	auto i = begin(drivers);
+	while (i != end(drivers)) {
+		 if (i->second->deviceNumber == fd) {
+		     return i->second;
+		 }
+		 else {
+		     i++;
+		 }
+	}
 }
 
 //==================================================================
@@ -377,4 +396,3 @@ void iDevice::completeRead() {
 	ok2read.SIGNAL;
 }
 */
-
