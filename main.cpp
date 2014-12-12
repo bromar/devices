@@ -112,5 +112,34 @@ int main(int argc, char *argv[])
 	inout.write(buf1,12);
 	myPrint(buf1,12);
 
+	cout << drivers["ioDevice"]->driverName << endl;// << drivers[0]->second << endl;
+	
+/*
+	char buftest[10];
+	string hello = "hello";
+	iDevice<char> testStr(hello);
+	testStr.read(buftest,10);
+	myPrint(buftest,10);
+	//*/
+
+/*
+	char buftest[] = "world";
+	string hello = "hello";
+	oDevice<char> testStr(hello);
+	testStr.write(buftest,10);
+	myPrint(buftest,10);
+//*/
+
+	char buftest[] = "world";
+	string hello = "hello";
+	ioDevice<char> testStr(hello);
+
+	testStr.write(buftest,10);
+	myPrint(buftest,10);
+
+	testStr.read(buftest,10);
+	myPrint(buftest,10);
+
+
  	return 0;
 }
