@@ -1,5 +1,6 @@
 #include <string>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include "devices.h"
 
@@ -129,7 +130,7 @@ int main(int argc, char *argv[])
 	testStr.write(buftest,10);
 	myPrint(buftest,10);
 //*/
-
+/*
 	char buftest[] = "world";
 	string hello = "hello";
 	ioDevice<char> testStr(hello);
@@ -139,6 +140,15 @@ int main(int argc, char *argv[])
 
 	testStr.read(buftest,10);
 	myPrint(buftest,10);
+*/
+
+	char buftest[25];
+	fstream f("testfile.txt",ios::in | ios::out);
+	ioDevice<char> testStr(&f);
+
+	testStr.read(buftest,25);
+	myPrint(buftest,25);
+
 
 
  	return 0;
