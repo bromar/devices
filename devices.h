@@ -1,3 +1,15 @@
+/*
+	WARNING!!!!!!!
+	Consider the case where a Device is created from a temporary stream (stringstream or istream).
+	Our constructors require an address or pointer to this stream. As far as the implementation
+	of C++ basic_istream, for example, is concerned this originating stream MUST NOT go out of scope.
+	You will have to allocate memory for this stream or ensure that is always in scope.
+	
+	If any questions, ask us.
+*/
+
+
+
 #ifndef DEVICES_H
 #define DEVICES_H 
 
