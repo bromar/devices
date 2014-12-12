@@ -57,6 +57,26 @@ using namespace std;
 
 class Device;
 
+/*
+	Global collections
+	defined in device_system.cc
+
+
+	vector<Inode> ilist;
+	vector<Device*> drivers;
+
+	vector<int> freedDeviceNumbers;
+
+	sigset_t InterruptSystem::on;
+	sigset_t InterruptSystem::alrmoff;
+	sigset_t InterruptSystem::alloff;
+
+	InterruptSystem interrupts;// singleton instance.
+*/
+
+extern map<string,Device*> drivers;
+extern vector<int> freedDeviceNumbers;
+
 //=========================== interrupts ======================
 
 
@@ -95,15 +115,6 @@ public:// man sigsetops for details on signal operations.
 	} //like set but leaves blocked those signals already blocked.
 };
 
-/*
-	Declared in device_system.cpp
-
-	sigset_t InterruptSystem::on;
-	sigset_t InterruptSystem::alrmoff;
-	sigset_t InterruptSystem::alloff;
-
-	InterruptSystem interrupts;// singleton instance.
-*/
 
 
 //============================================================
@@ -176,6 +187,8 @@ public:
 void readCompletionHandler(int deviceIndex);
 void writeCompletionHandler(int deviceIndex);
 
+// Utility function to access Device ptr from a FD
+Device * getDeviceFd(int fd);
 
 class Device: public Monitor {
 public:
@@ -213,22 +226,13 @@ public:
 };
 
 
-/*
-	global collections
-	declared in device_system.cc
-
-
-	vector<Inode> ilist;
-	vector<Device*> drivers;
-
-	vector<int> freedDeviceNumbers;
-*/
 
 
 template< typename Item >
 class iDevice : public Device {
-
+	
 	istream *stream;
+	stringstream sstream;
 	int offsetIn = 0;
   
 	public:
@@ -237,6 +241,16 @@ class iDevice : public Device {
 		Device("iDevice")
 	{
 		offsetIn = 0;
+		stream->seekg(offsetIn,ios_base::beg);
+	}
+
+	iDevice( string s )
+		: sstream(s), 
+		Device("iDevice")
+	{
+		offsetIn = 0;
+		stream = &sstream;
+		//static_cast<istream*>(&sstream);
 		stream->seekg(offsetIn,ios_base::beg);
 	}
 
@@ -357,6 +371,7 @@ template< typename Item >
 class oDevice : public Device {
 
   	ostream *stream;
+	stringstream sstream;
     int offsetOut = 0;
 
 	//helper function doPadding only works for write, not read
@@ -375,6 +390,15 @@ public:
 		Device("oDevice")
 	{
 		offsetOut = 0;
+		stream->seekp(offsetOut,ios_base::beg);
+	}
+
+	oDevice( string s )
+		: sstream(s), 
+		Device("oDevice")
+	{
+		offsetOut = 0;
+		stream = &sstream;
 		stream->seekp(offsetOut,ios_base::beg);
 	}
 
@@ -486,6 +510,7 @@ template< typename Item >
 class ioDevice : public iDevice<Item>, public oDevice<Item> {
 
   iostream *stream;
+  stringstream sstream;
   int offset = 0;
 
 public:
@@ -496,6 +521,15 @@ public:
 	{
 		offset = 0;
 	}
+
+	ioDevice( string s )  
+		:sstream(s), 
+		 iDevice<Item>(s), oDevice<Item>(s)
+	{
+		offset = 0;
+		stream = &sstream;
+	}
+
 
 	int seek(off_t newOffset, int whence) {
 		if (iDevice<Item>::readable==true&&iDevice<Item>::writeable==false)
