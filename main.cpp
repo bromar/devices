@@ -142,13 +142,34 @@ int main(int argc, char *argv[])
 	myPrint(buftest,10);
 */
 
-	char buftest[25];
-	fstream f("testfile.txt",ios::in | ios::out);
-	ioDevice<char> testStr(&f);
+	cout << "Testing ioDevice(fstream*) constructor\n";
+	char buftest[50];
+	memset(buftest,0,50);
+	string fname = "testfile.txt";
+	fstream f(fname.c_str(),ios::in | ios::out);
 
-	testStr.read(buftest,25);
-	myPrint(buftest,25);
+	ioDevice<char> fs(&f);
+	fs.open(fname.c_str(), ODD_RDWR);
 
+
+	cout << "Testing ioDevice extraction operator\n";
+	memset(buftest,0,50);
+	cout << "buftest before extraction of fstream object: " << buftest << endl;
+
+	//example of use...
+	//[ioDevice] >> [buffer size] >> [buffer];
+	fs >> 26 >> buftest;
+	
+	cout << "Buffer after extraction of fstream object: " << buftest << endl;
+
+
+	cout << "Testing ioDevice insertion operator\n";
+	//writes in hex to file instead of ascii characters. strange...
+	char bufferTmp[26] = "One...two...three...four!";
+	cout << "String to be inserted into fstream object: " << bufferTmp << endl;
+
+	//[ioDevice] << [buffer size] << [buffer variable];
+	fs << 26 << bufferTmp;
 
 
  	return 0;

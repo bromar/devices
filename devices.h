@@ -382,6 +382,7 @@ class iDevice : public Device {
 		return offsetIn;
 	}
 	int rewind() {
+		//cout << "iRewind!\n";
 		seek(0,SEEK_SET);
 		return 0;
 	}
@@ -532,6 +533,7 @@ public:
 	}
 
 	int rewind() {
+		//cout << "oRewind!\n";
 		seek(0,SEEK_SET);
 		return 0;
 	}
@@ -545,6 +547,7 @@ class ioDevice : public iDevice<Item>, public oDevice<Item> {
   stringstream sstream;
   fstream* fstreamy;
   int offset = 0;
+  int bufSize = 0;
 
 public:
 
@@ -590,7 +593,7 @@ public:
 	}
 
 	int rewind() {
-
+		//cout << "Inside ioDevice rewind()\n";
 		if (iDevice<Item>::readable==true&&iDevice<Item>::writeable==false)
 		{
 			return iDevice<Item>::rewind();
@@ -666,6 +669,31 @@ public:
 		oDevice<Item>::finalize();
 	}
 
+	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, Item *rhs )
+	{
+		lhs.rewind();
+		lhs.write(rhs,lhs.bufSize);
+		return lhs;
+	}
+
+	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, Item *rhs )
+	{
+		lhs.rewind();
+		lhs.read(rhs,lhs.bufSize);
+		return lhs;
+	}
+
+	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, int rhs )
+	{
+		lhs.bufSize = rhs;
+		return lhs;
+	}
+
+	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, int rhs )
+	{
+		lhs.bufSize = rhs;
+		return lhs;
+	}
 };
 
 
