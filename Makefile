@@ -10,18 +10,19 @@ OS := $(shell uname)
 # OS X
 ifeq ($(OS), Darwin)
 LIBS = 
+## Compiler flags
+FLAGS = -std=c++11 -stdlib=libc++
 endif
 
 # Linux
 ifeq ($(OS), Linux)
 LIBS = 
+## Compiler flags
+FLAGS = -std=c++ -pthread
 endif
 
 ## Compiler
 CC = g++
-
-## Compiler flags
-FLAGS = -std=c++11 -pthread
 
 ## Global header files
 INCLUDE =
