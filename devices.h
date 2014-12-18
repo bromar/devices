@@ -462,7 +462,7 @@ public:
 				return (bytesWritten = i);
 			}
 			
-			//read character from bytes then store into buffer
+			//put character from buffer into stream
 			stream->put(buffer[i]);
 
 			if (tmp<0)
@@ -665,7 +665,7 @@ public:
 
 	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, Item rhs )
 	{
-		lhs.rewind();
+		//lhs.rewind();
 		lhs.write(rhs,lhs.bufSize);
 		return lhs;
 	}
@@ -686,13 +686,6 @@ public:
 	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, int rhs )
 	{
 		lhs.bufSize = rhs;
-		return lhs;
-	}
-
-	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, Item rhs )
-	{
-		lhs.rewind();
-		lhs.read(rhs,lhs.bufSize);
 		return lhs;
 	}
 

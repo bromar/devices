@@ -157,14 +157,18 @@ int main(int argc, char *argv[])
 	//[ioDevice] << [buffer variable];
 	fs << bufferTmp;
 
+	char tmpp[100];
+	memset(tmpp,0,100);
+	fs >> tmpp;
+	cout << "tmpp: " << tmpp << endl;
 	
 	/*
 		ioDevice Tests - subscript operator
 	*/
-	cout << "+ Testing ioDevice subscript operator\n";
-	cout << "fs[0]: " << fs[0] << endl;
-	char c = fs[1];
-	cout << "c = fs[1]: " << c << endl;
+	//cout << "+ Testing ioDevice subscript operator\n";
+	//cout << "fs[0]: " << fs[0] << endl;
+	//char c = fs[1];
+	//cout << "c = fs[1]: " << c << endl;
 
 	/*
 		ioDevice Tests - istream

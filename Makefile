@@ -18,7 +18,7 @@ endif
 ifeq ($(OS), Linux)
 LIBS = 
 ## Compiler flags
-FLAGS = -std=c++ -pthread
+FLAGS = -std=c++11 -pthread
 endif
 
 ## Compiler
