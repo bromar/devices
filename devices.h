@@ -236,8 +236,7 @@ public:
 	virtual int write();
 };
 
-
-
+//--------------------------------------------------
 
 template< typename Item >
 class iDevice : public Device {
@@ -246,6 +245,7 @@ class iDevice : public Device {
 	stringstream sstream;
 	fstream* fstreamy;
 	int offsetIn = 0;
+  	int bufSize = 1024;//used for overloaded operators
   
 	public:
 	iDevice( istream *stream )
@@ -262,7 +262,6 @@ class iDevice : public Device {
 	{
 		offsetIn = 0;
 		stream = &sstream;
-		//static_cast<istream*>(&sstream);
 		stream->seekg(offsetIn,ios_base::beg);
 	}
 
@@ -279,20 +278,6 @@ class iDevice : public Device {
 	CONDITION ok2read;
 	bool readCompleted;
 
-	/*int input(Item* buffer, int n) {
-		EXCLUSION
-		int i;
-		for (i = 0; i < n; ++i)
-		{
-			if (!stream) break;
-			stream >> buffer[i];
-			readCompleted = false;
-			readCompleted = true;
-			while(!readCompleted) ok2read.WAIT;
-		}
-		return i;
-	}*/
-
 	void completeRead() {
 		EXCLUSION
 		cout << "readComplete" << endl;
@@ -300,7 +285,7 @@ class iDevice : public Device {
 		ok2read.SIGNAL;
 	}
 
-	int read(Item *buffer, size_t count) {
+	int read(Item buffer, size_t count) {
 		EXCLUSION
 		int i;
 		off_t save = stream->tellg();
@@ -354,17 +339,14 @@ class iDevice : public Device {
 		//set position to current position + passed in position
 		else if(whence == SEEK_CUR)
 		{
-
 			//save position in our offset variable
 			offsetIn = offsetIn + newOffset;
 		}
-
 		else if(whence == SEEK_END)
 		{
 			//save position in our offset variable
 			offsetIn = (end-1) + newOffset;
-		}
-			
+		}	
 		
 		if(offsetIn > (end-1))
 		{
@@ -386,6 +368,20 @@ class iDevice : public Device {
 		seek(0,SEEK_SET);
 		return 0;
 	}
+
+	friend iDevice<Item> &operator>>( iDevice<Item> &lhs, Item rhs )
+	{
+		lhs.rewind();
+		lhs.read(rhs,lhs.bufSize);
+		return lhs;
+	}
+
+	friend iDevice<Item> &operator>>( iDevice<Item> &lhs, int rhs )
+	{
+		lhs.bufSize = rhs;
+		return lhs;
+	}
+
 };
 
 //--------------------------------------------------
@@ -393,10 +389,10 @@ class iDevice : public Device {
 template< typename Item >
 class oDevice : public Device {
 
-  	ostream *stream;
+	ostream *stream;
 	stringstream sstream;
 	fstream* fstreamy;
-   int offsetOut = 0;
+	int offsetOut = 0;
 
 	//helper function doPadding only works for write, not read
 	void doPadding(off_t start, off_t end)
@@ -438,7 +434,7 @@ public:
 	CONDITION ok2write;
 	bool writeCompleted;
 
-	int output( Item* buffer, int n ) {
+	int output( Item buffer, int n ) {
   		return -1;
 	}
 
@@ -449,7 +445,7 @@ public:
 		ok2write.SIGNAL;
 	}
 
-	int write(Item *buffer, size_t count) {
+	int write(Item buffer, size_t count) {
 		EXCLUSION
 		off_t save = stream->tellp();
 		stream->seekp(0, ios_base::end);
@@ -547,7 +543,7 @@ class ioDevice : public iDevice<Item>, public oDevice<Item> {
   stringstream sstream;
   fstream* fstreamy;
   int offset = 0;
-  int bufSize = 0;
+  int bufSize = 1024;
 
 public:
 
@@ -618,8 +614,6 @@ public:
 		if ((flags & 0x01) | (flags & 0x02)) {
 			dn = oDevice<Item>::open(pathname,flags);
 		}
-		//cout << "ir: " << iDevice<Item>::readable << endl;
-		//cout << "iw: " << iDevice<Item>::writeable << endl;
 		return dn;
 	}
 
@@ -628,11 +622,11 @@ public:
 		return oDevice<Item>::close();
 	}
 
-	int read(Item *buffer, size_t count) {
+	int read(Item buffer, size_t count) {
 		return iDevice<Item>::read(buffer,count);
 	}
 
-	int write(Item *buffer, size_t count) {
+	int write(Item buffer, size_t count) {
 		return oDevice<Item>::write(buffer,count);
 	}
 
@@ -669,14 +663,14 @@ public:
 		oDevice<Item>::finalize();
 	}
 
-	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, Item *rhs )
+	friend ioDevice<Item> &operator<<( ioDevice<Item> &lhs, Item rhs )
 	{
 		lhs.rewind();
 		lhs.write(rhs,lhs.bufSize);
 		return lhs;
 	}
 
-	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, Item *rhs )
+	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, Item rhs )
 	{
 		lhs.rewind();
 		lhs.read(rhs,lhs.bufSize);
@@ -693,6 +687,22 @@ public:
 	{
 		lhs.bufSize = rhs;
 		return lhs;
+	}
+
+	friend ioDevice<Item> &operator>>( ioDevice<Item> &lhs, Item rhs )
+	{
+		lhs.rewind();
+		lhs.read(rhs,lhs.bufSize);
+		return lhs;
+	}
+
+	char operator[](int rhs)
+	{
+		Item tmpBuff;
+		iDevice<Item>::rewind();
+		iDevice<Item>::seek(rhs,SEEK_CUR);
+		iDevice<Item>::read(tmpBuff,1);
+		return tmpBuff[0];
 	}
 };
 
